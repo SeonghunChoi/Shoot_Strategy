@@ -1,0 +1,18 @@
+{
+    "name": "Prototype.Combat.Editor",
+    "rootNamespace": "Prototype.Combat.Editor",
+    "references": [
+        "Prototype.Combat"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

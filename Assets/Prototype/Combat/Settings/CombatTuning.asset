@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 825d676b8b1ca884093aa140b8b4b9af, type: 3}
+  m_Name: CombatTuning
+  m_EditorClassIdentifier: Prototype.Combat::Prototype.Combat.CombatTuning
+  horizontalMode: 0
+  baseScrollSpeed: 8
+  offsetRange: 16
+  offsetSpeed: 12
+  minSpeed: 3
+  cruiseSpeed: 8
+  maxSpeed: 16
+  acceleration: 10
+  cruiseReturnRate: 4
+  verticalSpeed: 10
+  cameraFollow: 1
+  cameraSmoothTime: 0.2
+  cameraDeadZone: 0.4
+  switchVulnerableTime: 0.5
+  switchHoldThreshold: 0.25
+  ringSlowMotion: 1
+  ringSlowScale: 0.3
+  padLayout: 0
+  manualTurnEnabled: 0
+  terrainDamage: 10
+  terrainBounce: 8
+  radarEnabled: 1
