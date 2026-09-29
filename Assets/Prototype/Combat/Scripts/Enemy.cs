@@ -9,6 +9,7 @@ namespace Prototype.Combat
         Chase,
         AntiAir,
         Target,
+        BossPart,
     }
 
     /// <summary>
@@ -30,13 +31,18 @@ namespace Prototype.Combat
         public float Age;
         public float BaseY;
         public float FireTimer;
+        public float Heading = -1f;  // 공중 적의 지면 좌표 진행 방향 (-1 왼쪽)
+        public bool Persistent;      // 화면 밖으로 나가도 제거하지 않음 (보스 부위)
+        public bool Invulnerable;    // 피격은 되지만 피해 없음
+        public string Label;         // HUD 표시 이름 (보스 부위)
+        public float MaxHp;
         public Vector2 Velocity; // 지면 좌표 기준
 
         Renderer[] _renderers;
         Material[] _originals;
         float _flash;
 
-        public bool IsGround => Kind is EnemyKind.AntiAir or EnemyKind.Target;
+        public bool IsGround => Kind is EnemyKind.AntiAir or EnemyKind.Target or EnemyKind.BossPart;
         public bool Alive => Hp > 0f;
         public Vector2 Center => (Vector2)Root.position + CenterOffset;
         public float Extent => IsBox ? Mathf.Max(HalfSize.x, HalfSize.y) : Radius;
@@ -50,6 +56,16 @@ namespace Prototype.Combat
 
         public bool Overlaps(Vector2 p, float r) =>
             IsBox ? Hit.CircleBox(p, r, Center, HalfSize) : Hit.Circles(p, r, Center, Radius);
+
+        /// <summary>기본 재질 교체 (보스 코어 무적 해제 표시 등). 번쩍임 복귀 시에도 이 재질로 돌아온다.</summary>
+        public void SetBaseMaterial(Material material)
+        {
+            for (var i = 0; i < _renderers.Length; i++)
+            {
+                _originals[i] = material;
+                if (_flash <= 0f) _renderers[i].sharedMaterial = material;
+            }
+        }
 
         public void StartFlash()
         {

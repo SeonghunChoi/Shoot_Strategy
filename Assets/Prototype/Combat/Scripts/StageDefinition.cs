@@ -21,7 +21,9 @@ namespace Prototype.Combat
         public float GroundInterval;
         public float[] AirWeights = { 1f, 1f, 1f }; // 직선, 곡선, 추적
         public float AntiAirRatio = 0.5f;          // 지상 목표 중 대공포 비율
-        public bool IsTurnZone;
+        public bool IsTurnZone; // 가운데에 고정형 보스(지상 요새), 양 끝에서 자동 선회
+
+        public float Center => Start + Length * 0.5f;
 
         public float Start { get; set; }
         public float End => Start + Length;
@@ -48,8 +50,8 @@ namespace Prototype.Combat
                 },
                 new()
                 {
-                    Name = "선회 구역", Length = 300f, Style = TerrainStyle.Flat, Color = new Color(0.42f, 0.42f, 0.5f),
-                    IsTurnZone = true,
+                    Name = "선회 구역", Length = 160f, Style = TerrainStyle.Flat, Color = new Color(0.42f, 0.42f, 0.5f),
+                    AirInterval = 4f, AirWeights = new[] { 1f, 1f, 1f }, IsTurnZone = true,
                 },
             };
 

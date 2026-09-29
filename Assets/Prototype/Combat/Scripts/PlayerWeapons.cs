@@ -50,11 +50,11 @@ namespace Prototype.Combat
             _gunCooldown -= dt;
             _hardpointCooldown -= dt;
             var player = _ctx.Player;
-            if (player.Down || player.Vulnerable || dt <= 0f) return;
+            if (player.Down || player.Vulnerable || player.Turning || dt <= 0f) return;
 
             if (c.Gun.IsPressed() && _gunCooldown <= 0f)
             {
-                _ctx.PlayerBullets.Spawn(player.Nose, new Vector2(t.gunBulletSpeed, 0f), 0.15f, t.gunDamage * def.GunDamageScale, 1.5f);
+                _ctx.PlayerBullets.Spawn(player.Nose, new Vector2(player.Facing * t.gunBulletSpeed, 0f), 0.15f, t.gunDamage * def.GunDamageScale, 1.5f);
                 _gunCooldown = 1f / (t.gunFireRate * def.GunRateScale);
             }
 
@@ -63,7 +63,7 @@ namespace Prototype.Combat
                 var pos = player.Position + new Vector2(0f, -0.5f * player.ModelScale);
                 if (Selected == HardpointWeapon.Missile)
                 {
-                    _ctx.Ordnance.FireMissile(pos);
+                    _ctx.Ordnance.FireMissile(pos, player.Facing);
                     Member.Missiles--;
                     _hardpointCooldown = t.missileCooldown;
                 }

@@ -48,6 +48,7 @@ namespace Prototype.Combat
             ctx.Ordnance = new OrdnanceSystem(ctx);
             ctx.Effects = new Effects();
             ctx.Stage = new StageRunner(ctx);
+            ctx.Boss = new Boss(ctx);
 
             gameObject.AddComponent<DebugMenu>().Init(this);
             gameObject.AddComponent<CombatHud>().Init(this);
@@ -68,12 +69,15 @@ namespace Prototype.Combat
             ctx.Squadron.Reset();
             ctx.Camera.Snap(ctx.Player.Y, ctx.MapHeight);
             ctx.Enemies.Clear();
+            ctx.Boss.Clear();
+            if (ctx.Stage.TurnZone != null) ctx.Boss.Build(ctx.Stage.TurnZone);
             ctx.Ordnance.Clear();
             ctx.Effects.Clear();
             ctx.PlayerBullets.Clear();
             ctx.EnemyBullets.Clear();
             ctx.AirKills = 0;
             ctx.GroundKills = 0;
+            ctx.BossPartKills = 0;
             ctx.TerrainHits = 0;
             ctx.PlayerDowns = 0;
             ElapsedTime = 0f;
@@ -86,7 +90,8 @@ namespace Prototype.Combat
             if (Controls.Restart.WasPressedThisFrame()) ResetRun();
 
             var dt = Time.deltaTime;
-            if (!Ctx.Stage.Cleared && !Ctx.Squadron.Wiped) ElapsedTime += dt;
+            // 선회 중 스테이지 타이머 정지 (검증계획 3.5)
+            if (!Ctx.Stage.Cleared && !Ctx.Squadron.Wiped && !Ctx.Scroll.Turning) ElapsedTime += dt;
             Tick(dt);
         }
 
@@ -108,13 +113,18 @@ namespace Prototype.Combat
             var move = ctx.Squadron.SuppressMove ? Vector2.zero : Controls.Move.ReadValue<Vector2>();
             ctx.MapHeight = MapHeight();
 
-            ctx.Scroll.Tick(ctx.Squadron.SuppressMove ? 0f : Controls.Horizontal, dt);
+            var scroll = ctx.Scroll;
+            if (tuning.manualTurnEnabled && Controls.Turn.WasPressedThisFrame() && !scroll.Turning && !ctx.Player.Down)
+                scroll.StartTurn(); // 임의 선회 (Q7)
+            scroll.Tick(ctx.Squadron.SuppressMove ? 0f : Controls.Horizontal, dt);
+            ctx.Player.Facing = scroll.Direction;
+            ctx.Player.Turning = scroll.Turning;
 
             var wasDown = ctx.Player.Down;
             ctx.Squadron.Tick(dt, Time.unscaledDeltaTime);
-            ctx.Player.Tick(move.y, dt, ctx.MapHeight, PlayerScreenX);
+            ctx.Player.Tick(move.y, dt, ctx.MapHeight, PlayerScreenX * scroll.VisualDirection, scroll.VisualDirection, scroll.TurnProgress);
             if (wasDown && !ctx.Player.Down)
-                ctx.Player.Place(FreeY(PlayerScreenX, ctx.Player.Y, 2f)); // 전멸 복구: 그동안 지형이 지나갔을 수 있음
+                ctx.Player.Place(FreeY(PlayerScreenX * scroll.Direction, ctx.Player.Y, 2f)); // 전멸 복구: 그동안 지형이 지나갔을 수 있음
             ctx.Stage.ResolvePlayer();
 
             ctx.Camera.Tick(ctx.Player.Y, dt, ctx.MapHeight);
@@ -123,6 +133,7 @@ namespace Prototype.Combat
             ctx.EnemyBullets.FrameOffset = ctx.World.ScrollX.position; // 적 탄은 지면 좌표
 
             ctx.Weapons.Tick(dt);
+            ctx.Boss.Tick(dt);
             ctx.Enemies.Tick(dt);
             ctx.Ordnance.Tick(dt);
 

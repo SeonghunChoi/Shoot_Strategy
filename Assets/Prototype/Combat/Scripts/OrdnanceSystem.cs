@@ -21,6 +21,7 @@ namespace Prototype.Combat
             public Vector2 Vel;
             public float Life;
             public Enemy Target;
+            public int Facing;
         }
 
         sealed class Bomb
@@ -38,15 +39,16 @@ namespace Prototype.Combat
 
         public OrdnanceSystem(CombatContext ctx) => _ctx = ctx;
 
-        public void FireMissile(Vector2 pos)
+        public void FireMissile(Vector2 pos, int facing)
         {
             var t = Shapes.Create(PrimitiveType.Capsule, new Color(0.9f, 0.9f, 0.95f), _root, pos, new Vector3(0.2f, 0.45f, 0.2f), name: "Missile");
             _missiles.Add(new Missile
             {
                 T = t,
-                Vel = new Vector2(_ctx.Tuning.missileSpeed * 0.4f, -2f), // 레일에서 떨어지듯 시작
+                Vel = new Vector2(facing * _ctx.Tuning.missileSpeed * 0.4f, -2f), // 레일에서 떨어지듯 시작
                 Life = MissileLife,
-                Target = _ctx.Enemies.FindNearestAir(pos, pos.x - 1f),
+                Target = _ctx.Enemies.FindNearestAir(pos, facing),
+                Facing = facing,
             });
         }
 
@@ -59,7 +61,7 @@ namespace Prototype.Combat
             t.position = worldPos;
             t.localRotation = Quaternion.Euler(0f, 0f, 90f);
             // 모드 A의 뒤로 입력은 화면 내 위치 이동일 뿐 후진이 아니므로 대지 속도를 0 이상으로 제한
-            _bombs.Add(new Bomb { T = t, LocalVel = new Vector2(Mathf.Max(0f, _ctx.Scroll.Speed), 0f), Damage = damage, Radius = radius });
+            _bombs.Add(new Bomb { T = t, LocalVel = new Vector2(ForwardOnly(_ctx.Scroll.Speed, _ctx.Player.Facing), 0f), Damage = damage, Radius = radius });
         }
 
         public void Clear()
@@ -87,7 +89,7 @@ namespace Prototype.Combat
                 var m = _missiles[i];
                 Vector2 pos = m.T.position;
 
-                if (m.Target == null || !m.Target.Alive) m.Target = _ctx.Enemies.FindNearestAir(pos, pos.x);
+                if (m.Target == null || !m.Target.Alive) m.Target = _ctx.Enemies.FindNearestAir(pos, m.Facing);
 
                 var speed = Mathf.Min(m.Vel.magnitude + MissileAccel * dt, t.missileSpeed);
                 var dir = m.Vel.normalized;
@@ -97,10 +99,10 @@ namespace Prototype.Combat
                     var angle = Mathf.MoveTowardsAngle(Angle(dir), Angle(want), t.missileTurnRate * dt) * Mathf.Deg2Rad;
                     dir = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
                 }
-                else if (dir.x < 0.99f)
+                else if (dir.x * m.Facing < 0.99f)
                 {
                     // 목표가 없으면 수평으로 복귀
-                    var angle = Mathf.MoveTowardsAngle(Angle(dir), 0f, t.missileTurnRate * dt) * Mathf.Deg2Rad;
+                    var angle = Mathf.MoveTowardsAngle(Angle(dir), m.Facing > 0 ? 0f : 180f, t.missileTurnRate * dt) * Mathf.Deg2Rad;
                     dir = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
                 }
                 m.Vel = dir * speed;
@@ -155,6 +157,9 @@ namespace Prototype.Combat
                 if (e.Alive && e.Overlaps(pos, radius)) return e;
             return null;
         }
+
+        /// <summary>진행 방향과 반대 부호의 대지 속도는 0으로 (모드 A 뒤로 입력은 후진이 아님).</summary>
+        static float ForwardOnly(float speed, int facing) => speed * facing > 0f ? speed : 0f;
 
         static float Angle(Vector2 dir) => Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
 

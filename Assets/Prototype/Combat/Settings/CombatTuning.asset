@@ -12,25 +12,59 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 825d676b8b1ca884093aa140b8b4b9af, type: 3}
   m_Name: CombatTuning
   m_EditorClassIdentifier: Prototype.Combat::Prototype.Combat.CombatTuning
-  horizontalMode: 0
-  baseScrollSpeed: 8
+  horizontalMode: 1
+  baseScrollSpeed: 20
   offsetRange: 16
   offsetSpeed: 12
-  minSpeed: 3
-  cruiseSpeed: 8
-  maxSpeed: 16
+  decelRange: 5
+  accelRange: 8
   acceleration: 10
   cruiseReturnRate: 4
+  mapHeightScreens: 2.5
+  playerScreenX: -0.25
+  shipTiltAngle: 15
   verticalSpeed: 10
   cameraFollow: 1
   cameraSmoothTime: 0.2
   cameraDeadZone: 0.4
+  vulnerableMoveScale: 0.5
+  restoreSquadronOnWipe: 1
   switchVulnerableTime: 0.5
   switchHoldThreshold: 0.25
   ringSlowMotion: 1
   ringSlowScale: 0.3
-  padLayout: 0
+  padLayout: 2
   manualTurnEnabled: 0
   terrainDamage: 10
   terrainBounce: 8
-  radarEnabled: 1
+  playerInvincible: 0
+  playerMaxHp: 100
+  enemyBulletDamage: 10
+  enemyContactDamage: 20
+  hitInvulnTime: 0.5
+  gunFireRate: 12
+  gunDamage: 1
+  gunBulletSpeed: 40
+  missileCooldown: 0.5
+  missileDamage: 8
+  missileSpeed: 22
+  missileTurnRate: 180
+  bombCooldown: 0.4
+  bombDamage: 20
+  bombRadius: 3
+  bombGravity: 20
+  airSpawnEnabled: 1
+  groundSpawnEnabled: 1
+  airSpawnInterval: 1.5
+  groundSpawnInterval: 4
+  enemyAirSpeed: 3
+  airEnemyHp: 3
+  antiAirHp: 6
+  targetHp: 30
+  airFireInterval: 3
+  antiAirFireInterval: 2
+  enemyBulletSpeed: 10
+  enemyLeadAccuracy: 1
+  stageEnabled: 1
+  stageSpawnScale: 1
+  radarMode: 3

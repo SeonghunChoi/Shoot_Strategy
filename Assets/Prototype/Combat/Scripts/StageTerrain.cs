@@ -77,6 +77,9 @@ namespace Prototype.Combat
                     TerrainStyle.Mountains => Mathf.Max(hills, BumpHeight(peaks, x)),
                     _ => hills,
                 };
+                // 선회 구역 보스 본체(지상 요새)는 지형으로 처리: 충돌·탄 차단·폭탄 폭발이 그대로 적용된다
+                if (section.IsTurnZone && Mathf.Abs(x - section.Center) <= Boss.BodyHalfWidth)
+                    floor = Mathf.Max(floor, Boss.BodyHeight);
                 var ceil = mapHeight - BumpHeight(overhangs, x);
 
                 floor = Mathf.Min(floor, mapHeight - MinGap);

@@ -29,7 +29,7 @@ namespace Prototype.Combat
             var text =
                 $"구간  {(stage.Active ? stage.Current.Name : "무한 (스테이지 끔)")}\n" +
                 "\n" + // 진행 막대 자리
-                $"모드  {t.horizontalMode}\n" +
+                $"모드  {t.horizontalMode}  {(s.Turning ? "선회 중" : s.Direction > 0 ? "→" : "←")}\n" +
                 $"속도  {s.Speed,6:0.0}\n" +
                 (t.horizontalMode == HorizontalMode.PositionOffset
                     ? $"오프셋 {s.Offset,6:0.0} / ±{t.offsetRange:0}\n"
@@ -57,6 +57,9 @@ namespace Prototype.Combat
             }
 
             _center ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 32, fontStyle = FontStyle.Bold };
+            DrawBoss(ctx);
+            if (s.Turning)
+                GUI.Label(new Rect(0, Screen.height * 0.2f, Screen.width, 60), "선회", _center);
             if (player.Down)
             {
                 GUI.Label(new Rect(0, Screen.height * 0.35f, Screen.width, 60),
@@ -65,6 +68,37 @@ namespace Prototype.Combat
 
             if (stage.Cleared) DrawResult(ctx, time, "스테이지 종료");
             else if (ctx.Squadron.Wiped && !t.restoreSquadronOnWipe) DrawResult(ctx, time, "편대 전멸");
+        }
+
+        /// <summary>선회 구역에 들어오면 화면 위 가운데에 보스 부위별 체력 막대.</summary>
+        void DrawBoss(CombatContext ctx)
+        {
+            var boss = ctx.Boss;
+            if (!boss.Active || !ctx.Stage.InTurnZone) return;
+
+            const float barWidth = 180f;
+            var parts = boss.Parts;
+            var x = Screen.width * 0.5f - (parts.Count * (barWidth + 10f) - 10f) * 0.5f;
+            if (boss.Defeated)
+            {
+                GUI.Label(new Rect(0, 10, Screen.width, 50), "보스 격파 — 오른쪽 끝으로", _center);
+                return;
+            }
+
+            for (var i = 0; i < parts.Count; i++)
+            {
+                var p = parts[i];
+                var rect = new Rect(x + i * (barWidth + 10f), 12f, barWidth, 40f);
+                GUI.Box(rect, GUIContent.none);
+                var state = !p.Alive ? " (파괴)" : p.Invulnerable ? " (무적)" : "";
+                GUI.Label(new Rect(rect.x + 6f, rect.y + 2f, barWidth - 12f, 20f), p.Label + state);
+                var bar = new Rect(rect.x + 6f, rect.y + 24f, barWidth - 12f, 8f);
+                GUI.color = new Color(0f, 0f, 0f, 0.6f);
+                GUI.DrawTexture(bar, Texture2D.whiteTexture);
+                GUI.color = p.Invulnerable ? new Color(0.6f, 0.6f, 0.65f) : new Color(1f, 0.35f, 0.3f);
+                GUI.DrawTexture(new Rect(bar.x, bar.y, bar.width * Mathf.Max(0f, p.Hp) / p.MaxHp, bar.height), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+            }
         }
 
         void DrawResult(CombatContext ctx, float time, string title)
@@ -79,7 +113,8 @@ namespace Prototype.Combat
                 $"격추  공중 {ctx.AirKills} · 지상 {ctx.GroundKills}\n" +
                 $"지형 충돌  {ctx.TerrainHits}\n" +
                 $"기체 손실  {ctx.PlayerDowns}\n" +
-                "(선회 구역·보스는 6단계)  R 다시 시작", _result);
+                $"보스  {(ctx.Boss.Defeated ? "격파" : "미격파")} (부위 {ctx.BossPartKills})\n" +
+                "R 다시 시작", _result);
         }
 
         static string FormatTime(float time) => $"{(int)(time / 60)}:{time % 60:00.0}";

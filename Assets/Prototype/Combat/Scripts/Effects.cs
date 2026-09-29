@@ -20,6 +20,7 @@ namespace Prototype.Combat
             public Vector3 From;
             public float StartScale;
             public float Age;
+            public Vector3 Offset;
         }
 
         const float RetreatTime = 0.7f;
@@ -38,11 +39,11 @@ namespace Prototype.Combat
             _blasts.Add(new Blast { T = t, Duration = 0.25f + size * 0.08f, Size = size });
         }
 
-        public void Retreat(AircraftDefinition def, Transform source)
+        public void Retreat(AircraftDefinition def, Transform source, int facing)
         {
             var t = PlayerShip.BuildModel(def, _root);
             t.SetPositionAndRotation(source.position, source.rotation);
-            _ghosts.Add(new Ghost { T = t, From = source.position, StartScale = def.ModelScale });
+            _ghosts.Add(new Ghost { T = t, From = source.position, StartScale = def.ModelScale, Offset = new Vector3(RetreatOffset.x * facing, RetreatOffset.y, RetreatOffset.z) });
         }
 
         public void Tick(float dt)
@@ -58,7 +59,7 @@ namespace Prototype.Combat
                     continue;
                 }
                 var k = g.Age / RetreatTime;
-                g.T.position = g.From + RetreatOffset * Mathf.SmoothStep(0f, 1f, k);
+                g.T.position = g.From + g.Offset * Mathf.SmoothStep(0f, 1f, k);
                 g.T.localScale = Vector3.one * g.StartScale * Mathf.Lerp(1f, 0.3f, k);
                 _ghosts[i] = g;
             }

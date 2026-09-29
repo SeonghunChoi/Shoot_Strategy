@@ -44,42 +44,57 @@ namespace Prototype.Combat
             for (var i = _enemies.Count - 1; i >= 0; i--)
             {
                 var e = _enemies[i];
-                var screenX = e.Root.position.x;
-                if (!e.Alive || screenX < view.xMin - 6f || screenX > view.xMax + 40f)
+                if (!e.Alive || (!e.Persistent && IsOutOfPlay(e.Root.position.x, view)))
                 {
                     Object.Destroy(e.Root.gameObject);
                     _enemies.RemoveAt(i);
                     continue;
                 }
 
+                e.TickFlash(dt);
+                if (e.Kind == EnemyKind.BossPart) continue; // 보스가 직접 갱신
+
                 e.Age += dt;
                 if (!e.IsGround) Move(e, dt);
                 if (e.Barrel != null) AimBarrel(e);
                 Fire(e, dt, view);
-                e.TickFlash(dt);
             }
         }
+
+        /// <summary>진행 방향 뒤쪽으로 화면을 벗어났거나, 앞쪽으로 너무 멀면 제거.</summary>
+        bool IsOutOfPlay(float screenX, Rect view)
+        {
+            var dir = _ctx.Scroll.Direction;
+            var behind = dir > 0 ? screenX < view.xMin - 6f : screenX > view.xMax + 6f;
+            return behind || screenX < view.xMin - 40f || screenX > view.xMax + 40f;
+        }
+
+        /// <summary>보스 등 외부에서 만든 적을 판정 목록에 넣는다.</summary>
+        public void AddExternal(Enemy e) => Add(e);
 
         public void Damage(Enemy e, float amount)
         {
             if (!e.Alive) return;
-            e.Hp -= amount;
             e.StartFlash();
+            if (e.Invulnerable) return;
+            e.Hp -= amount;
             if (e.Alive) return;
 
-            _ctx.Effects.Explode(e.Center, e.IsGround ? 3.5f : 2.5f, e.IsGround ? _ctx.World.ScrollX : null);
-            if (e.IsGround) _ctx.GroundKills++;
+            _ctx.Effects.Explode(e.Center, e.Kind == EnemyKind.BossPart ? 6f : e.IsGround ? 3.5f : 2.5f, e.IsGround ? _ctx.World.ScrollX : null);
+            if (e.Kind == EnemyKind.BossPart) _ctx.BossPartKills++;
+            else if (e.IsGround) _ctx.GroundKills++;
             else _ctx.AirKills++;
-            e.Root.gameObject.SetActive(false); // 제거는 다음 Tick
+            e.Root.gameObject.SetActive(false); // 제거는 다음 Tick (보스 부위는 Boss가 참조 유지)
         }
 
-        public Enemy FindNearestAir(Vector2 from, float minX)
+        /// <summary>기수 방향 앞쪽(1m 뒤까지 허용)에서 가장 가까운 공중 적.</summary>
+        public Enemy FindNearestAir(Vector2 from, int facing)
         {
             Enemy best = null;
             var bestDist = float.MaxValue;
             foreach (var e in _enemies)
             {
-                if (!e.Alive || e.IsGround || e.Center.x < minX) continue;
+                if (!e.Alive || e.IsGround || (e.Center.x - from.x) * facing < -1f) continue;
                 var d = (e.Center - from).sqrMagnitude;
                 if (d < bestDist) { bestDist = d; best = e; }
             }
@@ -136,10 +151,10 @@ namespace Prototype.Combat
         {
             var t = _ctx.Tuning;
             var stage = _ctx.Stage;
-            if (stage.Cleared) return;
+            if (stage.Cleared || _ctx.Scroll.Turning) return; // 선회 중 적 미등장 (검증계획 3.5)
 
-            // 스테이지 사용 시 화면 오른쪽 끝(등장 지점)이 속한 구간의 설정을 따른다
-            var section = stage.SectionAt(_ctx.Scroll.Distance + _ctx.Camera.HalfWidth);
+            // 스테이지 사용 시 진행 방향 화면 끝(등장 지점)이 속한 구간의 설정을 따른다
+            var section = stage.SectionAt(SpawnX(0f));
             var airInterval = section != null ? section.AirInterval * t.stageSpawnScale : t.airSpawnInterval;
             var groundInterval = section != null ? section.GroundInterval * t.stageSpawnScale : t.groundSpawnInterval;
             var airWeights = section?.AirWeights ?? EqualWeights;
@@ -181,10 +196,12 @@ namespace Prototype.Combat
         {
             var cam = _ctx.Camera;
             // 화면 위아래 밖에서도 등장 (Q3: 세로 시야 확인)
-            var groundX = _ctx.Scroll.Distance + cam.HalfWidth + 3f;
+            var groundX = SpawnX(3f);
             var (minY, maxY) = AirBand(groundX);
             var y = Mathf.Clamp(cam.Y + _ctx.Range(-1.6f, 1.6f) * cam.HalfHeight, minY, maxY);
             var root = CreateRoot(kind, groundX, y);
+            var heading = -_ctx.Scroll.Direction; // 기체를 향해 날아온다
+            if (heading > 0f) root.localRotation = Quaternion.Euler(0f, 180f, 0f); // 모델 기수는 -X
 
             var color = kind switch { EnemyKind.Curve => CurveColor, EnemyKind.Chase => ChaseColor, _ => StraightColor };
             var body = Shapes.Create(PrimitiveType.Capsule, color, root, Vector3.zero, new Vector3(0.55f, 0.9f, 0.55f));
@@ -194,14 +211,14 @@ namespace Prototype.Combat
 
             Add(new Enemy
             {
-                Kind = kind, Root = root, Hp = _ctx.Tuning.airEnemyHp, Radius = 0.8f, BaseY = y,
+                Kind = kind, Root = root, Hp = _ctx.Tuning.airEnemyHp, Radius = 0.8f, BaseY = y, Heading = heading,
                 FireTimer = _ctx.Range(0.5f, _ctx.Tuning.airFireInterval),
             });
         }
 
         void SpawnGround(EnemyKind kind)
         {
-            var groundX = _ctx.Scroll.Distance + _ctx.Camera.HalfWidth + 4f;
+            var groundX = SpawnX(4f);
             var root = CreateRoot(kind, groundX, _ctx.Stage.Terrain.Floor(groundX));
             var e = new Enemy { Kind = kind, Root = root, IsBox = true };
 
@@ -228,6 +245,9 @@ namespace Prototype.Combat
             Add(e);
         }
 
+        /// <summary>진행 방향 화면 끝에서 margin만큼 바깥의 지면 좌표 x.</summary>
+        float SpawnX(float margin) => _ctx.Scroll.Distance + _ctx.Scroll.Direction * (_ctx.Camera.HalfWidth + margin);
+
         Transform CreateRoot(EnemyKind kind, float localX, float y)
         {
             var root = new GameObject(kind.ToString()).transform;
@@ -250,14 +270,14 @@ namespace Prototype.Combat
             switch (e.Kind)
             {
                 case EnemyKind.Straight:
-                    p.x -= speed * dt;
+                    p.x += e.Heading * speed * dt;
                     break;
                 case EnemyKind.Curve:
-                    p.x -= speed * dt;
+                    p.x += e.Heading * speed * dt;
                     p.y = e.BaseY + Mathf.Sin(e.Age * CurveFrequency) * CurveAmplitude;
                     break;
                 case EnemyKind.Chase:
-                    p.x -= speed * 0.8f * dt;
+                    p.x += e.Heading * speed * 0.8f * dt;
                     p.y += Mathf.Clamp((_ctx.Player.Y - p.y) * 1.5f, -ChaseVerticalSpeed, ChaseVerticalSpeed) * dt;
                     break;
             }
@@ -267,7 +287,7 @@ namespace Prototype.Combat
             e.Velocity = ((Vector2)p - previous) / dt;
         }
 
-        void AimBarrel(Enemy e)
+        public void AimBarrel(Enemy e)
         {
             var dir = LeadDirection(e.Barrel.position, Vector2.zero);
             var angle = Mathf.Clamp(Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg, 10f, 170f);
@@ -279,7 +299,7 @@ namespace Prototype.Combat
         /// 탄의 지면 속도 = shooterVelocity + 방향 × 탄속. 해가 없으면 현재 위치를 겨눈다.
         /// 예측량은 enemyLeadAccuracy 배율로 줄일 수 있다 (0이면 현재 위치).
         /// </summary>
-        Vector2 LeadDirection(Vector2 originWorld, Vector2 shooterVelocity)
+        public Vector2 LeadDirection(Vector2 originWorld, Vector2 shooterVelocity)
         {
             var player = _ctx.Player;
             var toTarget = player.Position - originWorld; // 월드와 지면 좌표의 차이는 평행 이동뿐
@@ -333,8 +353,14 @@ namespace Prototype.Combat
                 origin = e.Center;
                 vel = e.Velocity + LeadDirection(origin, e.Velocity) * t.enemyBulletSpeed;
             }
+            FireBullet(origin, vel);
+        }
+
+        /// <summary>적 탄 발사 (월드 좌표 원점, 지면 좌표 속도).</summary>
+        public void FireBullet(Vector2 originWorld, Vector2 velocity)
+        {
             var bullets = _ctx.EnemyBullets;
-            bullets.Spawn(origin - bullets.FrameOffset, vel, 0.25f, t.enemyBulletDamage, 6f);
+            bullets.Spawn(originWorld - bullets.FrameOffset, velocity, 0.25f, _ctx.Tuning.enemyBulletDamage, 6f);
         }
     }
 }

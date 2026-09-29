@@ -69,7 +69,8 @@ namespace Prototype.Combat
 
         [Header("입력 · 선회")]
         [Tooltip("패드 입력 배치")] public PadLayout padLayout = PadLayout.Layout1;
-        [Tooltip("임의 선회 허용")] public bool manualTurnEnabled = false;
+        [Tooltip("임의 선회 허용 (RB / I)")] public bool manualTurnEnabled = false;
+        [Tooltip("선회 시간 (초)"), Range(0.3f, 3f)] public float turnDuration = 1.2f;
 
         [Header("지형 충돌")]
         [Tooltip("지형 충돌 피해"), Range(0f, 100f)] public float terrainDamage = 10f;
@@ -110,6 +111,11 @@ namespace Prototype.Combat
         [Tooltip("대공포 발사 간격 (초)"), Range(0.3f, 10f)] public float antiAirFireInterval = 2f;
         [Tooltip("적 탄속"), Range(2f, 30f)] public float enemyBulletSpeed = 10f;
         [Tooltip("적 예측 사격 정확도 (0=현재 위치, 1=완전 예측)"), Range(0f, 1f)] public float enemyLeadAccuracy = 1f;
+
+        [Header("보스")]
+        [Tooltip("포탑 체력"), Range(1f, 200f)] public float bossTurretHp = 40f;
+        [Tooltip("코어 체력"), Range(1f, 400f)] public float bossCoreHp = 100f;
+        [Tooltip("보스 사격 간격 (초)"), Range(0.3f, 6f)] public float bossFireInterval = 2f;
 
         [Header("스테이지")]
         [Tooltip("스테이지 사용 (끄면 평지 무한 등장, 리셋 시 반영)")] public bool stageEnabled = true;

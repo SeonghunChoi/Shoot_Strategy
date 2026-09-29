@@ -148,7 +148,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c1b8fac165967de49b3ce3d69da4aa44, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Prototype.Combat::Prototype.Combat.CombatBootstrap
-  tuning: {fileID: 0}
+  tuning: {fileID: 11400000, guid: 6e29570f9564adb41bd4e373bc0303c9, type: 2}
 --- !u!4 &323005455
 Transform:
   m_ObjectHideFlags: 0

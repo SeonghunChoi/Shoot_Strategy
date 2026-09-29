@@ -48,9 +48,10 @@ namespace Prototype.Combat
                 var c = e.Center;
                 var above = c.y > view.yMax;
                 if (!above && c.y >= view.yMin) continue;
-                if (c.x < view.xMin || c.x > view.xMax + EdgeAhead) continue;
+                var dir = ctx.Scroll.Direction; // 진행 방향 앞쪽 화면 밖까지 표시
+                if (dir > 0 ? c.x < view.xMin || c.x > view.xMax + EdgeAhead : c.x < view.xMin - EdgeAhead || c.x > view.xMax) continue;
 
-                var sx = cam.WorldToScreenPoint(new Vector3(Mathf.Min(c.x, view.xMax - 0.5f), view.center.y, 0f)).x;
+                var sx = cam.WorldToScreenPoint(new Vector3(Mathf.Clamp(c.x, view.xMin + 0.5f, view.xMax - 0.5f), view.center.y, 0f)).x;
                 var dy = above ? c.y - view.yMax : view.yMin - c.y;
                 var rect = above
                     ? new Rect(sx - 30f, 2f, 60f, 40f)
@@ -71,8 +72,9 @@ namespace Prototype.Combat
 
             var height = Mathf.Max(120f, Screen.height - StripTop - 20f);
             var area = new Rect(Screen.width - StripWidth - 20f, StripTop, StripWidth, height);
-            var xMin = distance + view.xMin - StripBehind;
-            var xMax = distance + view.xMax + StripAhead;
+            var ahead = ctx.Scroll.Direction > 0;
+            var xMin = distance + view.xMin - (ahead ? StripBehind : StripAhead);
+            var xMax = distance + view.xMax + (ahead ? StripAhead : StripBehind);
 
             Fill(area, new Color(0f, 0f, 0f, 0.45f));
 

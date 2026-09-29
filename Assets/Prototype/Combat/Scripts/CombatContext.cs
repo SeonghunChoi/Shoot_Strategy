@@ -17,11 +17,13 @@ namespace Prototype.Combat
         public OrdnanceSystem Ordnance;
         public Effects Effects;
         public StageRunner Stage;
+        public Boss Boss;
         public System.Random Rng = new(42);
 
         public float MapHeight;
         public int AirKills;
         public int GroundKills;
+        public int BossPartKills;
         public int TerrainHits;
         public int PlayerDowns;
 

@@ -17,6 +17,7 @@ namespace Prototype.Combat
             (new Vector2(-1f, 0.15f), 0.3f),
         };
 
+        const float TurnMargin = 4f;      // 선회 구역 끝에서 이만큼 앞에서 선회 시작
         const float WallThreshold = 0.3f; // 기수가 중앙보다 이만큼 더 박히면 정면 충돌로 보고 뒤로 튕긴다
 
         readonly CombatContext _ctx;
@@ -28,6 +29,8 @@ namespace Prototype.Combat
         public StageSection Current { get; private set; }
         public float Progress { get; private set; }
         public bool Cleared { get; private set; }
+        public StageSection TurnZone { get; private set; }
+        public bool InTurnZone => TurnZone != null && PlayerGroundX >= TurnZone.Start && PlayerGroundX <= TurnZone.End;
 
         public StageRunner(CombatContext ctx) => _ctx = ctx;
 
@@ -43,6 +46,7 @@ namespace Prototype.Combat
             _inContact = false;
             Cleared = false;
             Current = Active ? _sections[0] : null;
+            TurnZone = Active ? _sections.Find(s => s.IsTurnZone) : null;
             Progress = 0f;
         }
 
@@ -59,10 +63,28 @@ namespace Prototype.Combat
             if (!Active) return;
             var x = PlayerGroundX;
             Current = SectionAt(x);
-            var turnZone = _sections.Find(s => s.IsTurnZone);
-            var goal = turnZone?.Start ?? _sections[^1].End;
+            var goal = TurnZone?.End ?? _sections[^1].End;
             Progress = Mathf.Clamp01(x / goal);
-            if (x >= goal) Cleared = true; // 선회 구역·보스는 6단계
+            if (Cleared) return;
+            if (TurnZone == null)
+            {
+                if (x >= goal) Cleared = true;
+                return;
+            }
+
+            // 선회 구역: 보스 격파 전에는 양 끝에서 자동 선회, 격파 후 오른쪽 끝 = 스테이지 종료
+            var scroll = _ctx.Scroll;
+            if (scroll.Turning || _ctx.Player.Down) return;
+            var bossDown = _ctx.Boss.Defeated;
+            if (scroll.Direction > 0 && x >= TurnZone.End - TurnMargin)
+            {
+                if (bossDown) Cleared = true;
+                else scroll.StartTurn();
+            }
+            else if (scroll.Direction < 0 && x <= TurnZone.Start + TurnMargin && x > TurnZone.Start - 20f)
+            {
+                scroll.StartTurn(); // 구역 밖에서 임의 선회로 되돌아가는 중에는 발동하지 않음
+            }
         }
 
         /// <summary>기체가 지형에 박히면 밖으로 밀어내고 튕기며, 접촉을 시작할 때 피해를 준다.</summary>
@@ -81,7 +103,7 @@ namespace Prototype.Combat
             for (var i = 0; i < ProbePoints.Length; i++)
             {
                 var (offset, radius) = ProbePoints[i];
-                var p = pos + offset * player.ModelScale;
+                var p = pos + new Vector2(offset.x * player.Facing, offset.y) * player.ModelScale;
                 var r = radius * player.Member.Def.HitScale;
                 var gx = p.x + distance;
                 var f = Terrain.Floor(gx) - (p.y - r);
@@ -103,7 +125,7 @@ namespace Prototype.Combat
                 if (!_inContact)
                 {
                     _ctx.TerrainHits++;
-                    _ctx.Effects.Explode(pos + new Vector2(0.6f, floorPen >= ceilPen ? -0.4f : 0.4f), 1.2f);
+                    _ctx.Effects.Explode(pos + new Vector2(0.6f * player.Facing, floorPen >= ceilPen ? -0.4f : 0.4f), 1.2f);
                     if (player.Damage(_ctx.Tuning.terrainDamage))
                     {
                         _ctx.PlayerDowns++;

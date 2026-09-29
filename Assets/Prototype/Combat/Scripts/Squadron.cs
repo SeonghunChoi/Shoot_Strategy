@@ -66,6 +66,14 @@ namespace Prototype.Combat
             if (Current.Down) HandleShotDown();
             if (Wiped) return;
 
+            // 선회 중: 조작 불능, 전경 시간 정지 (검증계획 3.5)
+            if (_ctx.Scroll.Turning)
+            {
+                if (RingOpen) CloseRing();
+                _pressing = false;
+                return;
+            }
+
             Current.ForegroundTime += dt;
             _vulnerableTimer = Mathf.Max(0f, _vulnerableTimer - dt);
             _ctx.Player.Vulnerable = _vulnerableTimer > 0f;
@@ -172,7 +180,7 @@ namespace Prototype.Combat
         void SwitchTo(int index)
         {
             var player = _ctx.Player;
-            _ctx.Effects.Retreat(Current.Def, player.CurrentModel); // 빠지는 기체는 뒤쪽 위로 사라짐 (배경 레이어 대용)
+            _ctx.Effects.Retreat(Current.Def, player.CurrentModel, player.Facing); // 빠지는 기체는 뒤쪽 위로 사라짐 (배경 레이어 대용)
             Activate(index, vulnerable: true);
         }
 

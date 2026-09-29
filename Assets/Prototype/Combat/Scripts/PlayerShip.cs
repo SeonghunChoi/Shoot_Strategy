@@ -27,8 +27,14 @@ namespace Prototype.Combat
         public float HitRadius => BaseHitRadius * Member.Def.HitScale;
         public float ModelScale => Member.Def.ModelScale;
         public Vector2 Position => _root.position;
-        public Vector2 Nose => Position + new Vector2(1.3f * ModelScale, 0f);
+        public Vector2 Nose => Position + new Vector2(Facing * 1.3f * ModelScale, 0f);
         public Transform CurrentModel => _model;
+
+        /// <summary>기수 방향 (+1 오른쪽, -1 왼쪽). 부트스트랩이 진행 방향으로 설정.</summary>
+        public int Facing { get; set; } = 1;
+
+        /// <summary>선회 중: 조작 불능·무적 (검증계획 3.5).</summary>
+        public bool Turning { get; set; }
 
         /// <summary>조종 가능한 기체가 없음 (편대 전멸).</summary>
         public bool Down { get; set; }
@@ -36,7 +42,7 @@ namespace Prototype.Combat
         /// <summary>교대 직후 무방비 (발사 불가, 이동 감속). Squadron이 설정.</summary>
         public bool Vulnerable { get; set; }
 
-        public bool CanBeHit => !Down && _invuln <= 0f && !_tuning.playerInvincible;
+        public bool CanBeHit => !Down && !Turning && _invuln <= 0f && !_tuning.playerInvincible;
 
         public PlayerShip(CombatTuning tuning, AircraftDefinition[] defs)
         {
@@ -113,9 +119,11 @@ namespace Prototype.Combat
             _root.position = new Vector3(_root.position.x, Y, 0f);
         }
 
-        public void Tick(float input, float dt, float mapHeight, float screenX)
+        /// <param name="visualDirection">+1 오른쪽 ~ -1 왼쪽. 선회 중에는 그 사이 값 (기체가 뒤집힘)</param>
+        /// <param name="turnProgress">선회 진행 0~1 (위로 호를 그리는 연출용)</param>
+        public void Tick(float input, float dt, float mapHeight, float screenX, float visualDirection, float turnProgress)
         {
-            if (Down) input = 0f;
+            if (Down || Turning) input = 0f;
             _invuln = Mathf.Max(0f, _invuln - dt);
 
             var speed = _tuning.verticalSpeed * Member.Def.VerticalSpeedScale * (Vulnerable ? _tuning.vulnerableMoveScale : 1f);
@@ -125,8 +133,13 @@ namespace Prototype.Combat
             _bounceVelocity *= Mathf.Exp(-BounceDecay * dt);
             _root.position = new Vector3(screenX, Y, 0f);
 
+            // 방향: 기체를 Y축으로 돌려 뒤집는다. 선회 중에는 위로 호를 그리며 기수를 든다
+            _root.rotation = Quaternion.Euler(0f, Mathf.Lerp(180f, 0f, (visualDirection + 1f) * 0.5f), 0f);
+            var arc = Mathf.Sin(Mathf.PI * turnProgress);
+            _model.localPosition = new Vector3(0f, arc * 3f, 0f);
+
             _tilt = Mathf.Lerp(_tilt, input * _tuning.shipTiltAngle, 1f - Mathf.Exp(-10f * dt));
-            _model.localRotation = Quaternion.Euler(0f, 0f, _tilt);
+            _model.localRotation = Quaternion.Euler(0f, 0f, _tilt + arc * 60f);
 
             // 전멸 시 숨김, 피격 무적·교대 무방비 중 깜빡임
             var blink = (_invuln > 0f || Vulnerable) && Mathf.Repeat(Time.unscaledTime * 15f, 2f) >= 1f;
