@@ -14,11 +14,9 @@ namespace Prototype.Combat
     {
         CombatBootstrap _boot;
         FieldInfo[] _fields;
-        bool _open = true;
+        bool _open;
         Rect _window = new(10, 10, 420, 640);
         Vector2 _scroll;
-        GUIStyle _headerStyle;
-        Font _font;
         readonly StringBuilder _sb = new();
 
         public void Init(CombatBootstrap boot)
@@ -36,21 +34,15 @@ namespace Prototype.Combat
         {
             if (!_open || _boot == null) return;
 
-            if (_font == null)
-            {
-                // 기본 IMGUI 폰트의 한글 누락 대비
-                _font = Font.CreateDynamicFontFromOSFont(new[] { "Malgun Gothic", "맑은 고딕", "Arial" }, 14);
-                _headerStyle = null;
-            }
-            GUI.skin.font = _font;
-            _headerStyle ??= new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
-
+            ProtoGui.Begin();
             _window = GUILayout.Window(0x5EED, _window, DrawWindow, "Combat Prototype  (F1 / View)");
         }
 
         void DrawWindow(int id)
         {
             _scroll = GUILayout.BeginScrollView(_scroll);
+            if (GUILayout.Button("리셋 (R / Start)")) _boot.ResetRun();
+            GUILayout.Space(8);
             DrawInputState();
             GUILayout.Space(8);
             DrawTuning();
@@ -61,11 +53,12 @@ namespace Prototype.Combat
         void DrawInputState()
         {
             var c = _boot.Controls;
-            GUILayout.Label("입력 상태", _headerStyle);
+            GUILayout.Label("입력 상태", ProtoGui.Bold);
 
             var device = c.Move.activeControl?.device ?? Gamepad.current as InputDevice ?? Keyboard.current;
             GUILayout.Label($"장치: {device?.displayName ?? "-"}   배치: {c.Layout}");
             GUILayout.Label($"Move: {c.Move.ReadValue<Vector2>():F2}   Ring: {c.RingSelect.ReadValue<Vector2>():F2}");
+            GUILayout.Label($"가로 입력: {c.Horizontal:F2}   (RT {c.ThrottleUp.ReadValue<float>():F2} / LT {c.ThrottleDown.ReadValue<float>():F2})");
 
             _sb.Clear();
             Append(c.Gun); Append(c.Hardpoint); Append(c.Switch); Append(c.WeaponPrev);
@@ -89,7 +82,7 @@ namespace Prototype.Combat
                 if (header != null)
                 {
                     GUILayout.Space(6);
-                    GUILayout.Label(header.header, _headerStyle);
+                    GUILayout.Label(header.header, ProtoGui.Bold);
                 }
 
                 var label = field.GetCustomAttribute<TooltipAttribute>()?.tooltip ?? field.Name;

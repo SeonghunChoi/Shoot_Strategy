@@ -20,6 +20,7 @@ namespace Prototype.Combat
     {
         [InspectorName("배치 1 (LB)")] Layout1,
         [InspectorName("배치 2 (North)")] Layout2,
+        [InspectorName("배치 3 (트리거 스로틀)")] Layout3,
     }
 
     /// <summary>
@@ -39,6 +40,11 @@ namespace Prototype.Combat
         [Tooltip("B: 최고 속도"), Range(0f, 40f)] public float maxSpeed = 16f;
         [Tooltip("B: 가속도"), Range(0f, 60f)] public float acceleration = 10f;
         [Tooltip("B+: 순항 복귀 속도"), Range(0f, 30f)] public float cruiseReturnRate = 4f;
+
+        [Header("맵 · 기체")]
+        [Tooltip("맵 높이 (화면 배수)"), Range(1f, 4f)] public float mapHeightScreens = 2.5f;
+        [Tooltip("기체 화면 가로 위치 (0=중앙)"), Range(-0.45f, 0.45f)] public float playerScreenX = -0.25f;
+        [Tooltip("기체 기울기 (도)"), Range(0f, 45f)] public float shipTiltAngle = 15f;
 
         [Header("세로 이동 · 카메라")]
         [Tooltip("세로 이동 속도"), Range(0f, 30f)] public float verticalSpeed = 10f;
