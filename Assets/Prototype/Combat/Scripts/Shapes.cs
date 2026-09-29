@@ -25,6 +25,19 @@ namespace Prototype.Combat
             return t;
         }
 
+        static readonly Dictionary<PrimitiveType, Mesh> Meshes = new();
+
+        public static Mesh Mesh(PrimitiveType type)
+        {
+            if (Meshes.TryGetValue(type, out var mesh) && mesh != null) return mesh;
+
+            var go = GameObject.CreatePrimitive(type);
+            mesh = go.GetComponent<MeshFilter>().sharedMesh;
+            Object.Destroy(go);
+            Meshes[type] = mesh;
+            return mesh;
+        }
+
         public static Material Material(Color color, bool lit)
         {
             if (Materials.TryGetValue((color, lit), out var mat) && mat != null) return mat;

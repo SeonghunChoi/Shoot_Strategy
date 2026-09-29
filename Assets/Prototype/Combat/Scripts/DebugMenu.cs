@@ -15,7 +15,7 @@ namespace Prototype.Combat
         CombatBootstrap _boot;
         FieldInfo[] _fields;
         bool _open;
-        Rect _window = new(10, 10, 420, 640);
+        Rect _window = new(10, 10, 620, 720);
         Vector2 _scroll;
         readonly StringBuilder _sb = new();
 
@@ -35,12 +35,13 @@ namespace Prototype.Combat
             if (!_open || _boot == null) return;
 
             ProtoGui.Begin();
+            _window.height = Mathf.Min(720f, Screen.height - 20f);
             _window = GUILayout.Window(0x5EED, _window, DrawWindow, "Combat Prototype  (F1 / View)");
         }
 
         void DrawWindow(int id)
         {
-            _scroll = GUILayout.BeginScrollView(_scroll);
+            _scroll = GUILayout.BeginScrollView(_scroll, false, true, GUILayout.Height(_window.height - 30f)); // 가로 스크롤 없음
             if (GUILayout.Button("리셋 (R / Start)")) _boot.ResetRun();
             GUILayout.Space(8);
             DrawInputState();
@@ -94,6 +95,9 @@ namespace Prototype.Combat
                     case float f:
                         field.SetValue(tuning, FloatRow(label, f, range));
                         break;
+                    case int n:
+                        field.SetValue(tuning, Mathf.RoundToInt(FloatRow(label, n, range, "0")));
+                        break;
                     case bool b:
                         field.SetValue(tuning, GUILayout.Toggle(b, " " + label));
                         break;
@@ -117,13 +121,13 @@ namespace Prototype.Combat
 #endif
         }
 
-        static float FloatRow(string label, float value, RangeAttribute range)
+        static float FloatRow(string label, float value, RangeAttribute range, string format = "0.00")
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(170));
+            GUILayout.Label(label, GUILayout.Width(230));
             if (range != null)
                 value = GUILayout.HorizontalSlider(value, range.min, range.max, GUILayout.ExpandWidth(true));
-            GUILayout.Label(value.ToString("0.00"), GUILayout.Width(44));
+            GUILayout.Label(value.ToString(format), GUILayout.Width(64));
             GUILayout.EndHorizontal();
             return value;
         }

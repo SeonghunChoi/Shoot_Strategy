@@ -18,6 +18,9 @@ namespace Prototype.Combat
         public float HalfWidth => _camera.orthographicSize * _camera.aspect;
         public float Y => _camera.transform.position.y;
 
+        /// <summary>현재 화면의 월드 영역 (카메라 x = 0).</summary>
+        public Rect View => new(-HalfWidth, Y - HalfHeight, HalfWidth * 2f, HalfHeight * 2f);
+
         public CameraRig(CombatTuning tuning, Camera camera)
         {
             _tuning = tuning;
