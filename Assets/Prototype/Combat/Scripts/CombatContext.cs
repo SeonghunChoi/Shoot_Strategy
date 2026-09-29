@@ -10,6 +10,7 @@ namespace Prototype.Combat
         public CameraRig Camera;
         public PlayerShip Player;
         public PlayerWeapons Weapons;
+        public Squadron Squadron;
         public BulletPool PlayerBullets;
         public BulletPool EnemyBullets;
         public EnemySystem Enemies;

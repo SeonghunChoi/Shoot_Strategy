@@ -109,7 +109,7 @@ namespace Prototype.Combat
             for (var i = enemyBullets.Count - 1; i >= 0; i--)
             {
                 ref var b = ref enemyBullets[i];
-                if (!Hit.Circles(enemyBullets.WorldPos(i), b.Radius, player.Position, PlayerShip.HitRadius)) continue;
+                if (!Hit.Circles(enemyBullets.WorldPos(i), b.Radius, player.Position, player.HitRadius)) continue;
                 var damage = b.Damage;
                 enemyBullets.Kill(i);
                 if (HitPlayer(damage)) return;
@@ -117,7 +117,7 @@ namespace Prototype.Combat
 
             foreach (var e in _enemies)
             {
-                if (!e.Alive || e.IsGround || !e.Overlaps(player.Position, PlayerShip.HitRadius)) continue;
+                if (!e.Alive || e.IsGround || !e.Overlaps(player.Position, player.HitRadius)) continue;
                 Damage(e, float.MaxValue);
                 if (HitPlayer(_ctx.Tuning.enemyContactDamage)) return;
             }

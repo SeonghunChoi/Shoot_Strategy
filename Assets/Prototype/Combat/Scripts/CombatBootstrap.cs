@@ -38,8 +38,10 @@ namespace Prototype.Combat
             var maxHalfWidth = ctx.Camera.HalfHeight * MaxAspect;
             ctx.World = new ScrollWorld(maxHalfWidth);
             _background = new ParallaxBackground(maxHalfWidth);
-            ctx.Player = new PlayerShip(tuning, new Color(0.75f, 0.8f, 0.85f));
+            var aircraft = AircraftDefinition.CreateSquadron();
+            ctx.Player = new PlayerShip(tuning, aircraft);
             ctx.Weapons = new PlayerWeapons(ctx);
+            ctx.Squadron = new Squadron(ctx, aircraft);
             ctx.PlayerBullets = new BulletPool(new Color(1f, 0.95f, 0.4f), new Vector3(0.6f, 0.12f, 0.12f), stretch: true);
             ctx.EnemyBullets = new BulletPool(new Color(1f, 0.3f, 0.6f), Vector3.one * 0.5f, stretch: false);
             ctx.Enemies = new EnemySystem(ctx);
@@ -50,6 +52,7 @@ namespace Prototype.Combat
             gameObject.AddComponent<DebugMenu>().Init(this);
             gameObject.AddComponent<CombatHud>().Init(this);
             gameObject.AddComponent<RadarHud>().Init(this);
+            gameObject.AddComponent<SquadronHud>().Init(this);
 
             ResetRun();
         }
@@ -62,8 +65,8 @@ namespace Prototype.Combat
             ctx.Stage.Build(tuning.stageEnabled, ctx.MapHeight);
             ctx.World.SetFlatGroundVisible(!ctx.Stage.Active);
             ctx.Player.Reset(FreeY(PlayerScreenX, ctx.MapHeight * 0.3f, 3f));
+            ctx.Squadron.Reset();
             ctx.Camera.Snap(ctx.Player.Y, ctx.MapHeight);
-            ctx.Weapons.Reset();
             ctx.Enemies.Clear();
             ctx.Ordnance.Clear();
             ctx.Effects.Clear();
@@ -83,7 +86,7 @@ namespace Prototype.Combat
             if (Controls.Restart.WasPressedThisFrame()) ResetRun();
 
             var dt = Time.deltaTime;
-            if (!Ctx.Stage.Cleared) ElapsedTime += dt;
+            if (!Ctx.Stage.Cleared && !Ctx.Squadron.Wiped) ElapsedTime += dt;
             Tick(dt);
         }
 
@@ -102,18 +105,16 @@ namespace Prototype.Combat
         void Tick(float dt)
         {
             var ctx = Ctx;
-            var move = Controls.Move.ReadValue<Vector2>();
+            var move = ctx.Squadron.SuppressMove ? Vector2.zero : Controls.Move.ReadValue<Vector2>();
             ctx.MapHeight = MapHeight();
 
-            ctx.Scroll.Tick(Controls.Horizontal, dt);
+            ctx.Scroll.Tick(ctx.Squadron.SuppressMove ? 0f : Controls.Horizontal, dt);
 
             var wasDown = ctx.Player.Down;
+            ctx.Squadron.Tick(dt, Time.unscaledDeltaTime);
             ctx.Player.Tick(move.y, dt, ctx.MapHeight, PlayerScreenX);
             if (wasDown && !ctx.Player.Down)
-            {
-                ctx.Weapons.Reset(); // 복귀 시 재무장
-                ctx.Player.Place(FreeY(PlayerScreenX, ctx.Player.Y, 2f)); // 격추 중 지형이 지나갔을 수 있음
-            }
+                ctx.Player.Place(FreeY(PlayerScreenX, ctx.Player.Y, 2f)); // 전멸 복구: 그동안 지형이 지나갔을 수 있음
             ctx.Stage.ResolvePlayer();
 
             ctx.Camera.Tick(ctx.Player.Y, dt, ctx.MapHeight);
@@ -142,6 +143,7 @@ namespace Prototype.Combat
 
         void OnDestroy()
         {
+            Time.timeScale = 1f;
             Ctx?.Controls?.Dispose();
         }
     }

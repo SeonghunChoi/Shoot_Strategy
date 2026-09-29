@@ -27,6 +27,8 @@ namespace Prototype.Combat
         {
             public Transform T;
             public Vector2 LocalVel;
+            public float Damage;
+            public float Radius;
         }
 
         readonly CombatContext _ctx;
@@ -48,15 +50,16 @@ namespace Prototype.Combat
             });
         }
 
-        public void DropBomb(Vector2 worldPos)
+        /// <param name="size">모델 크기 배율 (폭격기 대형 폭탄)</param>
+        public void DropBomb(Vector2 worldPos, float damage, float radius, float size)
         {
             var scrollX = _ctx.World.ScrollX;
             var t = Shapes.Create(PrimitiveType.Capsule, new Color(0.25f, 0.28f, 0.22f), scrollX,
-                Vector3.zero, new Vector3(0.35f, 0.5f, 0.35f), name: "Bomb");
+                Vector3.zero, new Vector3(0.35f, 0.5f, 0.35f) * size, name: "Bomb");
             t.position = worldPos;
             t.localRotation = Quaternion.Euler(0f, 0f, 90f);
             // 모드 A의 뒤로 입력은 화면 내 위치 이동일 뿐 후진이 아니므로 대지 속도를 0 이상으로 제한
-            _bombs.Add(new Bomb { T = t, LocalVel = new Vector2(Mathf.Max(0f, _ctx.Scroll.Speed), 0f) });
+            _bombs.Add(new Bomb { T = t, LocalVel = new Vector2(Mathf.Max(0f, _ctx.Scroll.Speed), 0f), Damage = damage, Radius = radius });
         }
 
         public void Clear()
@@ -137,10 +140,10 @@ namespace Prototype.Combat
                 // 지면 또는 목표에 닿으면 범위 폭발
                 foreach (var e in _ctx.Enemies.All)
                 {
-                    if (e.Alive && (e.Center - pos).magnitude <= t.bombRadius + e.Extent)
-                        _ctx.Enemies.Damage(e, t.bombDamage);
+                    if (e.Alive && (e.Center - pos).magnitude <= b.Radius + e.Extent)
+                        _ctx.Enemies.Damage(e, b.Damage);
                 }
-                _ctx.Effects.Explode(pos, t.bombRadius * 2f, _ctx.World.ScrollX);
+                _ctx.Effects.Explode(pos, b.Radius * 2f, _ctx.World.ScrollX);
                 Object.Destroy(b.T.gameObject);
                 _bombs.RemoveAt(i);
             }

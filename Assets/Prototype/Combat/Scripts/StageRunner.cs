@@ -9,11 +9,11 @@ namespace Prototype.Combat
     /// </summary>
     public sealed class StageRunner
     {
-        // 기체 판정점: 화면 좌표 오프셋과 반지름 (기수·중앙·꼬리)
+        // 기체 판정점: 화면 좌표 오프셋과 반지름 (기수·중앙·꼬리), 기체 크기 배율을 곱한다
         static readonly (Vector2 offset, float radius)[] ProbePoints =
         {
             (new Vector2(1.2f, 0f), 0.3f),
-            (Vector2.zero, PlayerShip.HitRadius),
+            (Vector2.zero, 0.5f),
             (new Vector2(-1f, 0.15f), 0.3f),
         };
 
@@ -80,8 +80,9 @@ namespace Prototype.Combat
             float floorPen = 0f, ceilPen = 0f, nosePen = 0f, centerPen = 0f;
             for (var i = 0; i < ProbePoints.Length; i++)
             {
-                var (offset, r) = ProbePoints[i];
-                var p = pos + offset;
+                var (offset, radius) = ProbePoints[i];
+                var p = pos + offset * player.ModelScale;
+                var r = radius * player.Member.Def.HitScale;
                 var gx = p.x + distance;
                 var f = Terrain.Floor(gx) - (p.y - r);
                 var c = p.y + r - Terrain.Ceil(gx);

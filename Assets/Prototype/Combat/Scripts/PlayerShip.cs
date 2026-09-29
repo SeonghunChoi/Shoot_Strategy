@@ -3,57 +3,99 @@ using UnityEngine;
 namespace Prototype.Combat
 {
     /// <summary>
-    /// 화면 가로 위치에 고정되고 세로로만 이동하는 기체 (검증계획 3.3).
-    /// 체력이 0이 되면 DownTime 동안 사라졌다가 체력을 채우고 복귀한다 (기체 전환은 5단계).
+    /// 화면 가로 위치에 고정되고 세로로만 이동하는 전경 기체 (검증계획 3.3).
+    /// 편대 기체별 모델을 미리 만들어 두고 교대 시 켜고 끈다. 체력·장탄은 Member(편대 상태)에 있다.
     /// </summary>
     public sealed class PlayerShip
     {
         const float EdgeMargin = 1f;
-        const float DownTime = 2f;
-        const float ReviveInvulnTime = 1.5f;
-        public const float HitRadius = 0.5f;
+        const float BounceDecay = 6f;
+        const float BaseHitRadius = 0.5f;
 
         readonly CombatTuning _tuning;
         readonly Transform _root;
-        readonly Transform _model;
+        readonly Transform[] _models;
+        Transform _model;
         float _tilt;
-        float _downTimer;
         float _invuln;
         float _bounceVelocity;
 
-        const float BounceDecay = 6f;
-
+        public SquadronMember Member { get; private set; }
         public float Y { get; private set; }
-        public float Hp { get; private set; }
         public float VelocityY { get; private set; }
+        public float Hp => Member.Hp;
+        public float HitRadius => BaseHitRadius * Member.Def.HitScale;
+        public float ModelScale => Member.Def.ModelScale;
         public Vector2 Position => _root.position;
-        public Vector2 Nose => Position + new Vector2(1.3f, 0f);
-        public bool Down => _downTimer > 0f;
+        public Vector2 Nose => Position + new Vector2(1.3f * ModelScale, 0f);
+        public Transform CurrentModel => _model;
+
+        /// <summary>조종 가능한 기체가 없음 (편대 전멸).</summary>
+        public bool Down { get; set; }
+
+        /// <summary>교대 직후 무방비 (발사 불가, 이동 감속). Squadron이 설정.</summary>
+        public bool Vulnerable { get; set; }
+
         public bool CanBeHit => !Down && _invuln <= 0f && !_tuning.playerInvincible;
 
-        public PlayerShip(CombatTuning tuning, Color color)
+        public PlayerShip(CombatTuning tuning, AircraftDefinition[] defs)
         {
             _tuning = tuning;
             _root = new GameObject("PlayerShip").transform;
-            _model = new GameObject("Model").transform;
-            _model.SetParent(_root, false);
+            _models = new Transform[defs.Length];
+            for (var i = 0; i < defs.Length; i++)
+            {
+                _models[i] = BuildModel(defs[i], _root);
+                _models[i].gameObject.SetActive(false);
+            }
+        }
+
+        /// <summary>기체 모델 생성 (교대 퇴장 연출에서도 사용).</summary>
+        public static Transform BuildModel(AircraftDefinition def, Transform parent)
+        {
+            var model = new GameObject(def.Name).transform;
+            model.SetParent(parent, false);
+            model.localScale = Vector3.one * def.ModelScale;
 
             // 기수 = +X
-            var body = Shapes.Create(PrimitiveType.Capsule, color, _model, Vector3.zero, new Vector3(0.6f, 1.2f, 0.6f));
+            var color = def.Color;
+            var body = Shapes.Create(PrimitiveType.Capsule, color, model, Vector3.zero, new Vector3(0.6f, 1.2f, 0.6f));
             body.localRotation = Quaternion.Euler(0f, 0f, 90f);
-            Shapes.Create(PrimitiveType.Cube, color * 0.8f, _model, new Vector3(-0.1f, 0f, 0f), new Vector3(0.6f, 0.08f, 2.2f));
-            Shapes.Create(PrimitiveType.Cube, color * 0.8f, _model, new Vector3(-1f, 0.35f, 0f), new Vector3(0.35f, 0.6f, 0.08f));
-            Shapes.Create(PrimitiveType.Sphere, new Color(0.2f, 0.25f, 0.35f), _model, new Vector3(0.45f, 0.22f, 0f), new Vector3(0.45f, 0.25f, 0.3f));
+            Shapes.Create(PrimitiveType.Cube, color * 0.8f, model, new Vector3(-0.1f, 0f, 0f), new Vector3(0.6f, 0.08f, 2.2f));
+            Shapes.Create(PrimitiveType.Cube, color * 0.8f, model, new Vector3(-1f, 0.35f, 0f), new Vector3(0.35f, 0.6f, 0.08f));
+            Shapes.Create(PrimitiveType.Sphere, new Color(0.2f, 0.25f, 0.35f), model, new Vector3(0.45f, 0.22f, 0f), new Vector3(0.45f, 0.25f, 0.3f));
+            return model;
+        }
+
+        public void SetAircraft(int index, SquadronMember member)
+        {
+            Member = member;
+            if (_model != null) _model.gameObject.SetActive(false);
+            _model = _models[index];
+            _model.localRotation = Quaternion.Euler(0f, 0f, _tilt);
         }
 
         public void Reset(float y)
         {
             Y = y;
             _tilt = 0f;
-            Hp = _tuning.playerMaxHp;
-            _downTimer = 0f;
             _invuln = 0f;
             _bounceVelocity = 0f;
+            Down = false;
+            Vulnerable = false;
+        }
+
+        /// <summary>현재 기체에 피해를 적용한다. 이번 피해로 격추되면 true.</summary>
+        public bool Damage(float amount)
+        {
+            if (!CanBeHit || Member.Down) return false;
+            Member.Hp -= amount;
+            _invuln = _tuning.hitInvulnTime;
+            if (Member.Hp > 0f) return false;
+            Member.Hp = 0f;
+            Member.Down = true;
+            _invuln = 0f;
+            return true;
         }
 
         /// <summary>지형 밖으로 dy만큼 밀어내고 세로 튕김 속도를 준다.</summary>
@@ -64,50 +106,31 @@ namespace Prototype.Combat
             _root.position = new Vector3(_root.position.x, Y, 0f);
         }
 
-        /// <summary>격추 중 지형 안에 들어간 경우 등, 복귀 위치를 강제로 옮긴다.</summary>
+        /// <summary>위치를 강제로 옮긴다.</summary>
         public void Place(float y)
         {
             Y = y;
             _root.position = new Vector3(_root.position.x, Y, 0f);
         }
 
-        /// <summary>피해를 적용한다. 이번 피해로 격추되면 true.</summary>
-        public bool Damage(float amount)
-        {
-            if (!CanBeHit) return false;
-            Hp -= amount;
-            _invuln = _tuning.hitInvulnTime;
-            if (Hp > 0f) return false;
-            Hp = 0f;
-            _downTimer = DownTime;
-            return true;
-        }
-
         public void Tick(float input, float dt, float mapHeight, float screenX)
         {
-            if (Down)
-            {
-                _downTimer -= dt;
-                if (!Down)
-                {
-                    Hp = _tuning.playerMaxHp;
-                    _invuln = ReviveInvulnTime;
-                }
-                input = 0f;
-            }
+            if (Down) input = 0f;
             _invuln = Mathf.Max(0f, _invuln - dt);
 
+            var speed = _tuning.verticalSpeed * Member.Def.VerticalSpeedScale * (Vulnerable ? _tuning.vulnerableMoveScale : 1f);
             var previousY = Y;
-            Y = Mathf.Clamp(Y + (input * _tuning.verticalSpeed + _bounceVelocity) * dt, EdgeMargin, mapHeight - EdgeMargin);
-            _bounceVelocity *= Mathf.Exp(-BounceDecay * dt);
+            Y = Mathf.Clamp(Y + (input * speed + _bounceVelocity) * dt, EdgeMargin, mapHeight - EdgeMargin);
             VelocityY = dt > 0f ? (Y - previousY) / dt : 0f;
+            _bounceVelocity *= Mathf.Exp(-BounceDecay * dt);
             _root.position = new Vector3(screenX, Y, 0f);
 
             _tilt = Mathf.Lerp(_tilt, input * _tuning.shipTiltAngle, 1f - Mathf.Exp(-10f * dt));
             _model.localRotation = Quaternion.Euler(0f, 0f, _tilt);
 
-            // 격추 중 숨김, 무적 중 깜빡임
-            _model.gameObject.SetActive(!Down && (_invuln <= 0f || Mathf.Repeat(_invuln * 15f, 2f) < 1f));
+            // 전멸 시 숨김, 피격 무적·교대 무방비 중 깜빡임
+            var blink = (_invuln > 0f || Vulnerable) && Mathf.Repeat(Time.unscaledTime * 15f, 2f) >= 1f;
+            _model.gameObject.SetActive(!Down && !blink);
         }
     }
 }

@@ -60,6 +60,8 @@ namespace Prototype.Combat
         [Tooltip("데드존: 높이 (화면 비율)"), Range(0f, 0.9f)] public float cameraDeadZone = 0.4f;
 
         [Header("기체 전환")]
+        [Tooltip("무방비 중 세로 이동 배율"), Range(0f, 1f)] public float vulnerableMoveScale = 0.5f;
+        [Tooltip("전멸 시 2초 뒤 편대 복구 (테스트용)")] public bool restoreSquadronOnWipe = true;
         [Tooltip("전환 무방비 시간 (초)"), Range(0f, 2f)] public float switchVulnerableTime = 0.5f;
         [Tooltip("탭/홀드 구분 시간 (초)"), Range(0.1f, 1f)] public float switchHoldThreshold = 0.25f;
         [Tooltip("링 메뉴 슬로모션")] public bool ringSlowMotion = true;
@@ -75,23 +77,21 @@ namespace Prototype.Combat
 
         [Header("기체 체력")]
         [Tooltip("기체 무적")] public bool playerInvincible = false;
-        [Tooltip("기체 최대 체력"), Range(10f, 300f)] public float playerMaxHp = 100f;
+        [Tooltip("기체 최대 체력 (공격기 기준)"), Range(10f, 300f)] public float playerMaxHp = 100f;
         [Tooltip("적 탄 피해"), Range(0f, 50f)] public float enemyBulletDamage = 10f;
         [Tooltip("적 기체 충돌 피해"), Range(0f, 100f)] public float enemyContactDamage = 20f;
         [Tooltip("피격 후 무적 시간 (초)"), Range(0f, 2f)] public float hitInvulnTime = 0.5f;
 
-        [Header("기관포")]
+        [Header("기관포 (공격기 기준, 기체 배율 적용)")]
         [Tooltip("연사 속도 (발/초)"), Range(1f, 30f)] public float gunFireRate = 12f;
         [Tooltip("기관포 피해"), Range(0.1f, 5f)] public float gunDamage = 1f;
         [Tooltip("기관포 탄속"), Range(10f, 80f)] public float gunBulletSpeed = 40f;
 
-        [Header("하드포인트 무장")]
-        [Tooltip("미사일 장탄 수"), Range(0, 30)] public int missileAmmo = 8;
+        [Header("하드포인트 무장 (공격기 기준, 장탄은 기체 정의)")]
         [Tooltip("미사일 재발사 간격 (초)"), Range(0.05f, 2f)] public float missileCooldown = 0.5f;
         [Tooltip("미사일 피해"), Range(1f, 30f)] public float missileDamage = 8f;
         [Tooltip("미사일 최고 속도"), Range(5f, 50f)] public float missileSpeed = 22f;
         [Tooltip("미사일 선회 속도 (도/초)"), Range(0f, 720f)] public float missileTurnRate = 180f;
-        [Tooltip("폭탄 장탄 수"), Range(0, 30)] public int bombAmmo = 6;
         [Tooltip("폭탄 재투하 간격 (초)"), Range(0.05f, 2f)] public float bombCooldown = 0.4f;
         [Tooltip("폭탄 피해"), Range(1f, 60f)] public float bombDamage = 20f;
         [Tooltip("폭탄 폭발 반경"), Range(0.5f, 8f)] public float bombRadius = 3f;

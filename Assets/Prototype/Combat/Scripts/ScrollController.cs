@@ -23,6 +23,13 @@ namespace Prototype.Combat
         public float Speed { get; private set; }
         public float Throttle => _throttle;
 
+        // 현재 기체의 가로 입력 배율 (Squadron이 교대 시 설정)
+        public float OffsetSpeedScale { get; set; } = 1f;
+        public float DecelRangeScale { get; set; } = 1f;
+        public float AccelRangeScale { get; set; } = 1f;
+        public float DecelRange => _tuning.decelRange * DecelRangeScale;
+        public float AccelRange => _tuning.accelRange * AccelRangeScale;
+
         public ScrollController(CombatTuning tuning)
         {
             _tuning = tuning;
@@ -50,7 +57,7 @@ namespace Prototype.Combat
             if (_mode == HorizontalMode.PositionOffset)
             {
                 _baseDistance += (_tuning.baseScrollSpeed - _knockback) * dt;
-                Offset = Mathf.Clamp(Offset + input * _tuning.offsetSpeed * dt, -_tuning.offsetRange, _tuning.offsetRange);
+                Offset = Mathf.Clamp(Offset + input * _tuning.offsetSpeed * OffsetSpeedScale * dt, -_tuning.offsetRange, _tuning.offsetRange);
                 Distance = _baseDistance + Offset;
             }
             else
@@ -61,7 +68,7 @@ namespace Prototype.Combat
                 else if (_mode == HorizontalMode.SpeedCruiseReturn)
                     _throttle = Mathf.MoveTowards(_throttle, 0f, _tuning.cruiseReturnRate * dt);
 
-                _throttle = Mathf.Clamp(_throttle, -_tuning.decelRange, _tuning.accelRange);
+                _throttle = Mathf.Clamp(_throttle, -DecelRange, AccelRange);
                 var speed = Mathf.Max(0f, _tuning.baseScrollSpeed + _throttle);
                 Distance += (speed - _knockback) * dt;
             }
