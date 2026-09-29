@@ -1,11 +1,12 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace Prototype.Combat
 {
     /// <summary>
-    /// ScrollX 루트와 근경(지면 타일·거리 표식·천장선). 타일과 표식은 화면 밖으로 나가면 반대편으로 재배치한다.
-    /// 이후 단계의 청크·적 궤적·지상 목표도 ScrollX 아래에 붙는다.
+    /// ScrollX 루트와 근경(평지 줄무늬·거리 표식·천장선). 줄무늬와 표식은 화면 밖으로 나가면 반대편으로 재배치한다.
+    /// 스테이지 지형(Terrain)이 있으면 평지 줄무늬는 숨기고 표식만 지면 높이를 따라간다.
     /// </summary>
     public sealed class ScrollWorld
     {
@@ -14,7 +15,9 @@ namespace Prototype.Combat
         const float Margin = 12f;
 
         readonly Transform _fixedRoot;
+        readonly Transform _groundBase;
         readonly Transform _ceiling;
+        readonly Transform _tileRoot;
         readonly List<Transform> _tiles = new();
         readonly List<(Transform pole, TextMesh label)> _markers = new();
 
@@ -24,9 +27,11 @@ namespace Prototype.Combat
         {
             ScrollX = new GameObject("ScrollX").transform;
             _fixedRoot = new GameObject("FixedWorld").transform;
+            _tileRoot = new GameObject("FlatTiles").transform;
+            _tileRoot.SetParent(ScrollX, false);
 
             var span = (maxHalfWidth + Margin) * 2f;
-            Shapes.Create(PrimitiveType.Cube, new Color(0.32f, 0.3f, 0.24f), _fixedRoot,
+            _groundBase = Shapes.Create(PrimitiveType.Cube, new Color(0.32f, 0.3f, 0.24f), _fixedRoot,
                 new Vector3(0f, -5f, 1f), new Vector3(span, 10f, 4f), name: "GroundBase");
             _ceiling = Shapes.Create(PrimitiveType.Cube, new Color(1f, 0.4f, 0.3f), _fixedRoot,
                 Vector3.zero, new Vector3(span, 0.1f, 0.1f), lit: false, name: "CeilingLine");
@@ -36,7 +41,7 @@ namespace Prototype.Combat
             var tileColors = new[] { new Color(0.45f, 0.55f, 0.3f), new Color(0.38f, 0.48f, 0.26f) };
             for (var i = 0; i < tileCount; i++)
             {
-                _tiles.Add(Shapes.Create(PrimitiveType.Cube, tileColors[i % 2], ScrollX,
+                _tiles.Add(Shapes.Create(PrimitiveType.Cube, tileColors[i % 2], _tileRoot,
                     new Vector3((i + 0.5f) * TileWidth - span * 0.5f, -0.25f, 0f), new Vector3(TileWidth, 0.5f, 3f)));
             }
 
@@ -50,7 +55,14 @@ namespace Prototype.Combat
             }
         }
 
-        public void Tick(float distance, float mapHeight)
+        /// <summary>스테이지 지형이 있으면 평지 줄무늬와 바닥판을 숨긴다.</summary>
+        public void SetFlatGroundVisible(bool visible)
+        {
+            _tileRoot.gameObject.SetActive(visible);
+            _groundBase.gameObject.SetActive(visible);
+        }
+
+        public void Tick(float distance, float mapHeight, Func<float, float> floorAt)
         {
             ScrollX.position = new Vector3(-distance, 0f, 0f);
             _ceiling.position = new Vector3(0f, mapHeight, 0f);
@@ -61,10 +73,12 @@ namespace Prototype.Combat
             var markerSpan = _markers.Count * MarkerSpacing;
             foreach (var (pole, label) in _markers)
             {
-                if (!Wrap(pole, distance, markerSpan) && label.text.Length > 0) continue;
+                var moved = Wrap(pole, distance, markerSpan);
                 var x = pole.localPosition.x;
-                label.transform.localPosition = new Vector3(x, label.transform.localPosition.y, 1f);
-                label.text = $"{Mathf.RoundToInt(x)}m";
+                var floor = floorAt(x);
+                pole.localPosition = new Vector3(x, floor + 1.5f, 1f);
+                label.transform.localPosition = new Vector3(x, floor + 3.2f, 1f);
+                if (moved || label.text.Length == 0) label.text = $"{Mathf.RoundToInt(x)}m";
             }
         }
 

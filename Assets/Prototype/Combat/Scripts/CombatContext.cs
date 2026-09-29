@@ -15,11 +15,14 @@ namespace Prototype.Combat
         public EnemySystem Enemies;
         public OrdnanceSystem Ordnance;
         public Effects Effects;
+        public StageRunner Stage;
         public System.Random Rng = new(42);
 
         public float MapHeight;
         public int AirKills;
         public int GroundKills;
+        public int TerrainHits;
+        public int PlayerDowns;
 
         public float Range(float min, float max) => min + (float)Rng.NextDouble() * (max - min);
     }

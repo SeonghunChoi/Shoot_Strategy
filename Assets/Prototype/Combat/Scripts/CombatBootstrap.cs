@@ -4,7 +4,7 @@ namespace Prototype.Combat
 {
     /// <summary>
     /// 전투 프로토타입 진입점. 씬에는 이 오브젝트와 카메라·조명만 두고 나머지는 코드로 생성한다.
-    /// 갱신 순서: 스크롤 → 기체 → 카메라 → 근경·원경 → 발사 → 적 → 무장 → 탄 → 판정 → 효과 → 탄 렌더.
+    /// 갱신 순서: 스크롤 → 기체 → 지형 충돌 → 카메라 → 근경·원경 → 발사 → 적 → 무장 → 탄 → 판정 → 효과 → 진행 → 탄 렌더.
     /// </summary>
     [DefaultExecutionOrder(-1000)]
     public sealed class CombatBootstrap : MonoBehaviour
@@ -45,9 +45,11 @@ namespace Prototype.Combat
             ctx.Enemies = new EnemySystem(ctx);
             ctx.Ordnance = new OrdnanceSystem(ctx);
             ctx.Effects = new Effects();
+            ctx.Stage = new StageRunner(ctx);
 
             gameObject.AddComponent<DebugMenu>().Init(this);
             gameObject.AddComponent<CombatHud>().Init(this);
+            gameObject.AddComponent<RadarHud>().Init(this);
 
             ResetRun();
         }
@@ -57,7 +59,9 @@ namespace Prototype.Combat
             var ctx = Ctx;
             ctx.Scroll.Reset();
             ctx.MapHeight = MapHeight();
-            ctx.Player.Reset(ctx.MapHeight * 0.3f);
+            ctx.Stage.Build(tuning.stageEnabled, ctx.MapHeight);
+            ctx.World.SetFlatGroundVisible(!ctx.Stage.Active);
+            ctx.Player.Reset(FreeY(PlayerScreenX, ctx.MapHeight * 0.3f, 3f));
             ctx.Camera.Snap(ctx.Player.Y, ctx.MapHeight);
             ctx.Weapons.Reset();
             ctx.Enemies.Clear();
@@ -67,6 +71,8 @@ namespace Prototype.Combat
             ctx.EnemyBullets.Clear();
             ctx.AirKills = 0;
             ctx.GroundKills = 0;
+            ctx.TerrainHits = 0;
+            ctx.PlayerDowns = 0;
             ElapsedTime = 0f;
             Tick(0f);
         }
@@ -77,11 +83,21 @@ namespace Prototype.Combat
             if (Controls.Restart.WasPressedThisFrame()) ResetRun();
 
             var dt = Time.deltaTime;
-            ElapsedTime += dt;
+            if (!Ctx.Stage.Cleared) ElapsedTime += dt;
             Tick(dt);
         }
 
         float MapHeight() => tuning.mapHeightScreens * Ctx.Camera.HalfHeight * 2f;
+
+        float PlayerScreenX => tuning.playerScreenX * Ctx.Camera.HalfWidth * 2f;
+
+        /// <summary>기체 화면 위치의 바닥·천장에서 margin 이상 떨어진 높이.</summary>
+        float FreeY(float screenX, float y, float margin)
+        {
+            var groundX = screenX + Ctx.Scroll.Distance;
+            var terrain = Ctx.Stage.Terrain;
+            return Mathf.Clamp(y, terrain.Floor(groundX) + margin, terrain.Ceil(groundX) - margin);
+        }
 
         void Tick(float dt)
         {
@@ -92,11 +108,16 @@ namespace Prototype.Combat
             ctx.Scroll.Tick(Controls.Horizontal, dt);
 
             var wasDown = ctx.Player.Down;
-            ctx.Player.Tick(move.y, dt, ctx.MapHeight, tuning.playerScreenX * ctx.Camera.HalfWidth * 2f);
-            if (wasDown && !ctx.Player.Down) ctx.Weapons.Reset(); // 복귀 시 재무장
+            ctx.Player.Tick(move.y, dt, ctx.MapHeight, PlayerScreenX);
+            if (wasDown && !ctx.Player.Down)
+            {
+                ctx.Weapons.Reset(); // 복귀 시 재무장
+                ctx.Player.Place(FreeY(PlayerScreenX, ctx.Player.Y, 2f)); // 격추 중 지형이 지나갔을 수 있음
+            }
+            ctx.Stage.ResolvePlayer();
 
             ctx.Camera.Tick(ctx.Player.Y, dt, ctx.MapHeight);
-            ctx.World.Tick(ctx.Scroll.Distance, ctx.MapHeight);
+            ctx.World.Tick(ctx.Scroll.Distance, ctx.MapHeight, ctx.Stage.Terrain.Floor);
             _background.Tick(ctx.Scroll.Distance, ctx.Camera.Y, ctx.Camera.HalfHeight, ctx.MapHeight);
             ctx.EnemyBullets.FrameOffset = ctx.World.ScrollX.position; // 적 탄은 지면 좌표
 
@@ -109,9 +130,11 @@ namespace Prototype.Combat
                 view.width + BulletCullMargin * 2f, view.height + BulletCullMargin * 2f);
             ctx.PlayerBullets.Tick(dt, cull);
             ctx.EnemyBullets.Tick(dt, cull);
+            ctx.Stage.ResolveBullets();
 
             ctx.Enemies.ResolveCollisions();
             ctx.Effects.Tick(dt);
+            ctx.Stage.Tick();
 
             ctx.PlayerBullets.Render();
             ctx.EnemyBullets.Render();

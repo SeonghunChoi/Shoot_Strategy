@@ -19,6 +19,9 @@ namespace Prototype.Combat
         float _tilt;
         float _downTimer;
         float _invuln;
+        float _bounceVelocity;
+
+        const float BounceDecay = 6f;
 
         public float Y { get; private set; }
         public float Hp { get; private set; }
@@ -50,6 +53,22 @@ namespace Prototype.Combat
             Hp = _tuning.playerMaxHp;
             _downTimer = 0f;
             _invuln = 0f;
+            _bounceVelocity = 0f;
+        }
+
+        /// <summary>지형 밖으로 dy만큼 밀어내고 세로 튕김 속도를 준다.</summary>
+        public void Push(float dy, float bounceVelocity)
+        {
+            Y += dy;
+            _bounceVelocity = bounceVelocity;
+            _root.position = new Vector3(_root.position.x, Y, 0f);
+        }
+
+        /// <summary>격추 중 지형 안에 들어간 경우 등, 복귀 위치를 강제로 옮긴다.</summary>
+        public void Place(float y)
+        {
+            Y = y;
+            _root.position = new Vector3(_root.position.x, Y, 0f);
         }
 
         /// <summary>피해를 적용한다. 이번 피해로 격추되면 true.</summary>
@@ -79,7 +98,8 @@ namespace Prototype.Combat
             _invuln = Mathf.Max(0f, _invuln - dt);
 
             var previousY = Y;
-            Y = Mathf.Clamp(Y + input * _tuning.verticalSpeed * dt, EdgeMargin, mapHeight - EdgeMargin);
+            Y = Mathf.Clamp(Y + (input * _tuning.verticalSpeed + _bounceVelocity) * dt, EdgeMargin, mapHeight - EdgeMargin);
+            _bounceVelocity *= Mathf.Exp(-BounceDecay * dt);
             VelocityY = dt > 0f ? (Y - previousY) / dt : 0f;
             _root.position = new Vector3(screenX, Y, 0f);
 

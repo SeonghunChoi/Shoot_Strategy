@@ -127,6 +127,7 @@ namespace Prototype.Combat
         {
             var player = _ctx.Player;
             if (!player.Damage(damage)) return !player.CanBeHit;
+            _ctx.PlayerDowns++;
             _ctx.Effects.Explode(player.Position, 4f);
             return true;
         }
@@ -134,24 +135,56 @@ namespace Prototype.Combat
         void Spawn(float dt)
         {
             var t = _ctx.Tuning;
-            if (t.airSpawnEnabled && (_airTimer -= dt) <= 0f)
+            var stage = _ctx.Stage;
+            if (stage.Cleared) return;
+
+            // 스테이지 사용 시 화면 오른쪽 끝(등장 지점)이 속한 구간의 설정을 따른다
+            var section = stage.SectionAt(_ctx.Scroll.Distance + _ctx.Camera.HalfWidth);
+            var airInterval = section != null ? section.AirInterval * t.stageSpawnScale : t.airSpawnInterval;
+            var groundInterval = section != null ? section.GroundInterval * t.stageSpawnScale : t.groundSpawnInterval;
+            var airWeights = section?.AirWeights ?? EqualWeights;
+            var antiAirRatio = section?.AntiAirRatio ?? 0.5f;
+
+            if (t.airSpawnEnabled && airInterval > 0f && (_airTimer -= dt) <= 0f)
             {
-                SpawnAir((EnemyKind)_ctx.Rng.Next(3));
-                _airTimer = t.airSpawnInterval;
+                SpawnAir((EnemyKind)PickWeighted(airWeights));
+                _airTimer = airInterval;
             }
-            if (t.groundSpawnEnabled && (_groundTimer -= dt) <= 0f)
+            if (t.groundSpawnEnabled && groundInterval > 0f && (_groundTimer -= dt) <= 0f)
             {
-                SpawnGround(_ctx.Rng.Next(2) == 0 ? EnemyKind.AntiAir : EnemyKind.Target);
-                _groundTimer = t.groundSpawnInterval;
+                SpawnGround(_ctx.Rng.NextDouble() < antiAirRatio ? EnemyKind.AntiAir : EnemyKind.Target);
+                _groundTimer = groundInterval;
             }
+        }
+
+        static readonly float[] EqualWeights = { 1f, 1f, 1f };
+
+        int PickWeighted(float[] weights)
+        {
+            var total = 0f;
+            foreach (var w in weights) total += w;
+            var r = (float)_ctx.Rng.NextDouble() * total;
+            for (var i = 0; i < weights.Length; i++)
+            {
+                if ((r -= weights[i]) < 0f) return i;
+            }
+            return weights.Length - 1;
+        }
+
+        (float min, float max) AirBand(float groundX)
+        {
+            var terrain = _ctx.Stage.Terrain;
+            return (terrain.Floor(groundX) + 1.5f, terrain.Ceil(groundX) - 1.5f);
         }
 
         void SpawnAir(EnemyKind kind)
         {
             var cam = _ctx.Camera;
             // 화면 위아래 밖에서도 등장 (Q3: 세로 시야 확인)
-            var y = Mathf.Clamp(cam.Y + _ctx.Range(-1.6f, 1.6f) * cam.HalfHeight, 2f, _ctx.MapHeight - 2f);
-            var root = CreateRoot(kind, _ctx.Scroll.Distance + cam.HalfWidth + 3f, y);
+            var groundX = _ctx.Scroll.Distance + cam.HalfWidth + 3f;
+            var (minY, maxY) = AirBand(groundX);
+            var y = Mathf.Clamp(cam.Y + _ctx.Range(-1.6f, 1.6f) * cam.HalfHeight, minY, maxY);
+            var root = CreateRoot(kind, groundX, y);
 
             var color = kind switch { EnemyKind.Curve => CurveColor, EnemyKind.Chase => ChaseColor, _ => StraightColor };
             var body = Shapes.Create(PrimitiveType.Capsule, color, root, Vector3.zero, new Vector3(0.55f, 0.9f, 0.55f));
@@ -168,7 +201,8 @@ namespace Prototype.Combat
 
         void SpawnGround(EnemyKind kind)
         {
-            var root = CreateRoot(kind, _ctx.Scroll.Distance + _ctx.Camera.HalfWidth + 4f, 0f);
+            var groundX = _ctx.Scroll.Distance + _ctx.Camera.HalfWidth + 4f;
+            var root = CreateRoot(kind, groundX, _ctx.Stage.Terrain.Floor(groundX));
             var e = new Enemy { Kind = kind, Root = root, IsBox = true };
 
             if (kind == EnemyKind.AntiAir)
@@ -227,7 +261,8 @@ namespace Prototype.Combat
                     p.y += Mathf.Clamp((_ctx.Player.Y - p.y) * 1.5f, -ChaseVerticalSpeed, ChaseVerticalSpeed) * dt;
                     break;
             }
-            p.y = Mathf.Clamp(p.y, 1f, _ctx.MapHeight - 1f);
+            var (minY, maxY) = AirBand(p.x); // 지형을 뚫지 않는다
+            p.y = Mathf.Clamp(p.y, minY, maxY);
             e.Root.localPosition = p;
             e.Velocity = ((Vector2)p - previous) / dt;
         }

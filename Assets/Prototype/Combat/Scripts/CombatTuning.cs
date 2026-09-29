@@ -16,6 +16,14 @@ namespace Prototype.Combat
         [InspectorName("데드존")] DeadZone,
     }
 
+    public enum RadarMode
+    {
+        [InspectorName("끄기")] Off,
+        [InspectorName("가장자리")] Edge,
+        [InspectorName("세로 띠")] Strip,
+        [InspectorName("둘 다")] Both,
+    }
+
     public enum PadLayout
     {
         [InspectorName("배치 1 (LB)")] Layout1,
@@ -35,8 +43,8 @@ namespace Prototype.Combat
         [Tooltip("기본 스크롤 속도 (B: 시작·순항 속도)"), Range(0f, 30f)] public float baseScrollSpeed = 8f;
         [Tooltip("A: 오프셋 범위 (±)"), Range(0f, 40f)] public float offsetRange = 16f;
         [Tooltip("A: 오프셋 이동 속도"), Range(0f, 40f)] public float offsetSpeed = 12f;
-        [Tooltip("B: 최저 속도"), Range(0f, 30f)] public float minSpeed = 3f;
-        [Tooltip("B: 최고 속도"), Range(0f, 40f)] public float maxSpeed = 16f;
+        [Tooltip("B: 감속 폭 (기본 스크롤 − 폭까지)"), Range(0f, 30f)] public float decelRange = 5f;
+        [Tooltip("B: 가속 폭 (기본 스크롤 + 폭까지)"), Range(0f, 30f)] public float accelRange = 8f;
         [Tooltip("B: 가속도"), Range(0f, 60f)] public float acceleration = 10f;
         [Tooltip("B+: 순항 복귀 속도"), Range(0f, 30f)] public float cruiseReturnRate = 4f;
 
@@ -89,11 +97,11 @@ namespace Prototype.Combat
         [Tooltip("폭탄 폭발 반경"), Range(0.5f, 8f)] public float bombRadius = 3f;
         [Tooltip("폭탄 중력"), Range(1f, 60f)] public float bombGravity = 20f;
 
-        [Header("적 (임시 자동 등장)")]
+        [Header("적")]
         [Tooltip("공중 적 등장")] public bool airSpawnEnabled = true;
         [Tooltip("지상 목표 등장")] public bool groundSpawnEnabled = true;
-        [Tooltip("공중 적 등장 간격 (초)"), Range(0.2f, 10f)] public float airSpawnInterval = 1.5f;
-        [Tooltip("지상 목표 등장 간격 (초)"), Range(0.5f, 15f)] public float groundSpawnInterval = 4f;
+        [Tooltip("공중 적 등장 간격 (스테이지 끄기 시)"), Range(0.2f, 10f)] public float airSpawnInterval = 1.5f;
+        [Tooltip("지상 목표 등장 간격 (스테이지 끄기 시)"), Range(0.5f, 15f)] public float groundSpawnInterval = 4f;
         [Tooltip("공중 적 대지 속도"), Range(0f, 20f)] public float enemyAirSpeed = 3f;
         [Tooltip("공중 적 체력"), Range(1f, 20f)] public float airEnemyHp = 3f;
         [Tooltip("대공포 체력"), Range(1f, 40f)] public float antiAirHp = 6f;
@@ -103,7 +111,11 @@ namespace Prototype.Combat
         [Tooltip("적 탄속"), Range(2f, 30f)] public float enemyBulletSpeed = 10f;
         [Tooltip("적 예측 사격 정확도 (0=현재 위치, 1=완전 예측)"), Range(0f, 1f)] public float enemyLeadAccuracy = 1f;
 
+        [Header("스테이지")]
+        [Tooltip("스테이지 사용 (끄면 평지 무한 등장, 리셋 시 반영)")] public bool stageEnabled = true;
+        [Tooltip("스테이지 등장 간격 배율"), Range(0.25f, 4f)] public float stageSpawnScale = 1f;
+
         [Header("HUD")]
-        [Tooltip("레이더 HUD")] public bool radarEnabled = true;
+        [Tooltip("레이더 HUD")] public RadarMode radarMode = RadarMode.Both;
     }
 }

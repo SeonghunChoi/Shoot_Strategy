@@ -4,20 +4,24 @@ namespace Prototype.Combat
 {
     /// <summary>
     /// 가로 입력을 진행 거리로 바꾼다 (검증계획 3.2). 기체는 화면 가로 위치에 고정되고 ScrollX가 -Distance로 이동한다.
-    /// A: 기본 스크롤 + ±범위 오프셋 (떼면 유지) / B: 기본 스크롤에서 시작해 최저~최고 속도 가감속 /
-    /// B+: 떼면 기본 스크롤 속도로 복귀. 플레이 중 기본 스크롤 속도를 바꾸면 B의 현재 속도도 같은 폭만큼 옮긴다.
+    /// A: 기본 스크롤 + ±범위 오프셋 (떼면 유지) /
+    /// B: 기본 스크롤 + 스로틀 (−감속 폭 ~ +가속 폭, 떼면 유지) / B+: 떼면 스로틀이 0으로 복귀.
+    /// 스로틀은 기본 스크롤에 대한 차이로 저장하므로 기본 스크롤 속도를 바꾸면 B에도 바로 반영된다.
     /// </summary>
     public sealed class ScrollController
     {
         readonly CombatTuning _tuning;
         HorizontalMode _mode;
         float _baseDistance;
-        float _throttleSpeed;
-        float _lastBaseSpeed;
+        float _throttle; // B: 기본 스크롤 대비 속도 차
+        float _knockback;
+
+        const float KnockbackDecay = 20f;
 
         public float Distance { get; private set; }
         public float Offset { get; private set; }
         public float Speed { get; private set; }
+        public float Throttle => _throttle;
 
         public ScrollController(CombatTuning tuning)
         {
@@ -31,8 +35,8 @@ namespace Prototype.Combat
             _baseDistance = 0f;
             Offset = 0f;
             Distance = 0f;
-            _throttleSpeed = _tuning.baseScrollSpeed;
-            _lastBaseSpeed = _tuning.baseScrollSpeed;
+            _throttle = 0f;
+            _knockback = 0f;
             Speed = 0f;
         }
 
@@ -42,12 +46,10 @@ namespace Prototype.Combat
             if (_tuning.horizontalMode != _mode) SwitchMode(_tuning.horizontalMode);
 
             var previous = Distance;
-            _throttleSpeed += _tuning.baseScrollSpeed - _lastBaseSpeed;
-            _lastBaseSpeed = _tuning.baseScrollSpeed;
 
             if (_mode == HorizontalMode.PositionOffset)
             {
-                _baseDistance += _tuning.baseScrollSpeed * dt;
+                _baseDistance += (_tuning.baseScrollSpeed - _knockback) * dt;
                 Offset = Mathf.Clamp(Offset + input * _tuning.offsetSpeed * dt, -_tuning.offsetRange, _tuning.offsetRange);
                 Distance = _baseDistance + Offset;
             }
@@ -55,16 +57,21 @@ namespace Prototype.Combat
             {
                 var hasInput = Mathf.Abs(input) > 0.1f;
                 if (hasInput)
-                    _throttleSpeed += input * _tuning.acceleration * dt;
+                    _throttle += input * _tuning.acceleration * dt;
                 else if (_mode == HorizontalMode.SpeedCruiseReturn)
-                    _throttleSpeed = Mathf.MoveTowards(_throttleSpeed, _tuning.baseScrollSpeed, _tuning.cruiseReturnRate * dt);
+                    _throttle = Mathf.MoveTowards(_throttle, 0f, _tuning.cruiseReturnRate * dt);
 
-                _throttleSpeed = Mathf.Clamp(_throttleSpeed, _tuning.minSpeed, _tuning.maxSpeed);
-                Distance += _throttleSpeed * dt;
+                _throttle = Mathf.Clamp(_throttle, -_tuning.decelRange, _tuning.accelRange);
+                var speed = Mathf.Max(0f, _tuning.baseScrollSpeed + _throttle);
+                Distance += (speed - _knockback) * dt;
             }
+            _knockback = Mathf.MoveTowards(_knockback, 0f, KnockbackDecay * dt);
 
             Speed = (Distance - previous) / dt;
         }
+
+        /// <summary>지형 정면 충돌 시 뒤로 밀려나는 속도. 빠르게 감쇠한다.</summary>
+        public void Knockback(float speed) => _knockback = Mathf.Max(_knockback, speed);
 
         void SwitchMode(HorizontalMode mode)
         {
@@ -76,7 +83,7 @@ namespace Prototype.Combat
             }
             else if (_mode == HorizontalMode.PositionOffset)
             {
-                _throttleSpeed = _tuning.baseScrollSpeed;
+                _throttle = 0f;
             }
             _mode = mode;
         }

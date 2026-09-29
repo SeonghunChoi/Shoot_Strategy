@@ -107,12 +107,10 @@ namespace Prototype.Combat
                 m.Life -= dt;
 
                 var hit = FindOverlap(pos, MissileRadius);
-                if (hit != null)
-                {
-                    _ctx.Enemies.Damage(hit, t.missileDamage);
-                    _ctx.Effects.Explode(pos, 1.5f);
-                }
-                if (hit != null || m.Life <= 0f || !cull.Contains(pos))
+                var hitTerrain = _ctx.Stage.Terrain.IsSolid(pos.x + _ctx.Scroll.Distance, pos.y);
+                if (hit != null) _ctx.Enemies.Damage(hit, t.missileDamage);
+                if (hit != null || hitTerrain) _ctx.Effects.Explode(pos, 1.5f);
+                if (hit != null || hitTerrain || m.Life <= 0f || !cull.Contains(pos))
                 {
                     Object.Destroy(m.T.gameObject);
                     _missiles.RemoveAt(i);
@@ -134,7 +132,7 @@ namespace Prototype.Combat
                 b.T.localRotation = Quaternion.Euler(0f, 0f, Angle(b.LocalVel.normalized) - 90f);
 
                 Vector2 pos = b.T.position;
-                if (local.y > 0f && FindOverlap(pos, BombRadius) == null) continue;
+                if (local.y > _ctx.Stage.Terrain.Floor(local.x) && FindOverlap(pos, BombRadius) == null) continue;
 
                 // 지면 또는 목표에 닿으면 범위 폭발
                 foreach (var e in _ctx.Enemies.All)
