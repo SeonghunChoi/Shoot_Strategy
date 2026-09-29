@@ -18,9 +18,11 @@ namespace Prototype.Combat
         public Effects Effects;
         public StageRunner Stage;
         public Boss Boss;
+        public PlaytestLogger Log;
         public System.Random Rng = new(42);
 
         public float MapHeight;
+        public float StageTime; // 스테이지 경과 시간 (선회·종료 시 정지)
         public int AirKills;
         public int GroundKills;
         public int BossPartKills;

@@ -103,17 +103,25 @@ namespace Prototype.Combat
 
         void DrawResult(CombatContext ctx, float time, string title)
         {
-            _result ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 20 };
-            var rect = new Rect(Screen.width * 0.5f - 180f, Screen.height * 0.5f - 120f, 360f, 240f);
+            _result ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 18 };
+            var log = ctx.Log;
+            var foreground = "";
+            foreach (var m in ctx.Squadron.Members) foreground += $"{m.Def.Name} {FormatTime(m.ForegroundTime)}   ";
+
+            var rect = new Rect(Screen.width * 0.5f - 240f, Screen.height * 0.5f - 190f, 480f, 380f);
             GUI.Box(rect, GUIContent.none);
             GUI.Box(rect, GUIContent.none); // 두 번 겹쳐 덜 투명하게
-            GUI.Label(new Rect(rect.x, rect.y + 16f, rect.width, 40f), title, _center);
-            GUI.Label(new Rect(rect.x, rect.y + 64f, rect.width, 160f),
+            GUI.Label(new Rect(rect.x, rect.y + 12f, rect.width, 40f), title, _center);
+            GUI.Label(new Rect(rect.x, rect.y + 56f, rect.width, 310f),
                 $"시간  {FormatTime(time)}\n" +
                 $"격추  공중 {ctx.AirKills} · 지상 {ctx.GroundKills}\n" +
-                $"지형 충돌  {ctx.TerrainHits}\n" +
-                $"기체 손실  {ctx.PlayerDowns}\n" +
                 $"보스  {(ctx.Boss.Defeated ? "격파" : "미격파")} (부위 {ctx.BossPartKills})\n" +
+                $"지형 충돌  {ctx.TerrainHits} · 기체 손실  {ctx.PlayerDowns}\n" +
+                $"전환  탭 {log.SwitchTap} · 링 {log.SwitchRing} · 자동 {log.SwitchAuto} · 링 취소 {log.RingCancel}\n" +
+                $"무방비 중 피격  {log.VulnerableHits}\n" +
+                $"선회  자동 {log.TurnAuto} · 임의 {log.TurnManual}\n" +
+                $"전경 시간  {foreground}\n" +
+                $"기록 {log.RunId} → PlaytestLogs/\n" +
                 "R 다시 시작", _result);
         }
 

@@ -92,8 +92,10 @@ namespace Prototype.Combat
                 _wipeTimer = 0f;
                 _ctx.Player.Down = true;
                 _ctx.Player.Vulnerable = false;
+                _ctx.Log.Event("전멸", _ctx.Tuning.restoreSquadronOnWipe ? "복구" : "");
                 return;
             }
+            _ctx.Log.Switch("자동", Current, _members[next]);
             Activate(next, vulnerable: true);
         }
 
@@ -135,12 +137,13 @@ namespace Prototype.Combat
             {
                 var pick = RingSelection;
                 CloseRing();
-                if (pick >= 0 && pick != CurrentIndex && !_members[pick].Down) SwitchTo(pick);
+                if (pick >= 0 && pick != CurrentIndex && !_members[pick].Down) SwitchTo(pick, "링");
+                else _ctx.Log.RingCanceled();
             }
             else
             {
                 var next = NextAlive(CurrentIndex);
-                if (next >= 0 && next != CurrentIndex) SwitchTo(next);
+                if (next >= 0 && next != CurrentIndex) SwitchTo(next, "탭");
             }
         }
 
@@ -177,8 +180,9 @@ namespace Prototype.Combat
             return -1;
         }
 
-        void SwitchTo(int index)
+        void SwitchTo(int index, string method)
         {
+            _ctx.Log.Switch(method, Current, _members[index]);
             var player = _ctx.Player;
             _ctx.Effects.Retreat(Current.Def, player.CurrentModel, player.Facing); // 빠지는 기체는 뒤쪽 위로 사라짐 (배경 레이어 대용)
             Activate(index, vulnerable: true);

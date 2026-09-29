@@ -17,6 +17,7 @@ namespace Prototype.Combat
         bool _open;
         Rect _window = new(10, 10, 620, 720);
         Vector2 _scroll;
+        string _exportMessage;
         readonly StringBuilder _sb = new();
 
         public void Init(CombatBootstrap boot)
@@ -43,6 +44,13 @@ namespace Prototype.Combat
         {
             _scroll = GUILayout.BeginScrollView(_scroll, false, true, GUILayout.Height(_window.height - 30f)); // 가로 스크롤 없음
             if (GUILayout.Button("리셋 (R / Start)")) _boot.ResetRun();
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("튜닝 값 내보내기"))
+                _exportMessage = "저장: " + PlaytestLogger.ExportTuning(_boot.Tuning, _boot.Ctx.Squadron.Members);
+            if (GUILayout.Button("로그 폴더 열기")) PlaytestLogger.OpenFolder();
+            GUILayout.EndHorizontal();
+            GUILayout.Label($"기록 중: {_boot.Ctx.Log.RunId}");
+            if (_exportMessage != null) GUILayout.Label(_exportMessage);
             GUILayout.Space(8);
             DrawInputState();
             GUILayout.Space(8);
@@ -104,15 +112,23 @@ namespace Prototype.Combat
                     case Enum e:
                         field.SetValue(tuning, EnumRow(label, e));
                         break;
+                    case string s:
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(label, GUILayout.Width(230));
+                        field.SetValue(tuning, GUILayout.TextField(s));
+                        GUILayout.EndHorizontal();
+                        break;
                 }
             }
 
             GUILayout.Space(8);
             if (GUILayout.Button("기본값으로 초기화"))
             {
+                var tester = tuning.testerName;
                 var defaults = ScriptableObject.CreateInstance<CombatTuning>();
                 JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(defaults), tuning);
                 Destroy(defaults);
+                tuning.testerName = tester;
                 GUI.changed = true;
             }
 

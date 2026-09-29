@@ -43,7 +43,8 @@ namespace Prototype.Combat
         float _flash;
 
         public bool IsGround => Kind is EnemyKind.AntiAir or EnemyKind.Target or EnemyKind.BossPart;
-        public bool Alive => Hp > 0f;
+        // 화면 밖으로 나가 제거된 적(체력은 남음)도 살아 있지 않은 것으로 본다 (미사일 목표 등 외부 참조 보호)
+        public bool Alive => Hp > 0f && Root != null;
         public Vector2 Center => (Vector2)Root.position + CenterOffset;
         public float Extent => IsBox ? Mathf.Max(HalfSize.x, HalfSize.y) : Radius;
 

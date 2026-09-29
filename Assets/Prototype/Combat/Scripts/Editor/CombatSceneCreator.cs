@@ -14,6 +14,9 @@ namespace Prototype.Combat.Editor
         const string ScenePath = Root + "/Scenes/CombatProto.unity";
         const string TuningPath = Root + "/Settings/CombatTuning.asset";
 
+        [MenuItem("Prototype/Open Playtest Logs")]
+        static void OpenLogs() => PlaytestLogger.OpenFolder();
+
         [MenuItem("Prototype/Create Combat Scene")]
         static void Create()
         {

@@ -38,6 +38,9 @@ namespace Prototype.Combat
     [CreateAssetMenu(menuName = "Prototype/Combat Tuning", fileName = "CombatTuning")]
     public sealed class CombatTuning : ScriptableObject
     {
+        [Header("플레이테스트")]
+        [Tooltip("테스터 이름 (로그에 기록)")] public string testerName = "";
+
         [Header("가로 입력")]
         [Tooltip("가로 입력 모드")] public HorizontalMode horizontalMode = HorizontalMode.PositionOffset;
         [Tooltip("기본 스크롤 속도 (B: 시작·순항 속도)"), Range(0f, 30f)] public float baseScrollSpeed = 8f;

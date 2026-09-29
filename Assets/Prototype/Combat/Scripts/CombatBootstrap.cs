@@ -18,7 +18,7 @@ namespace Prototype.Combat
         public CombatContext Ctx { get; private set; }
         public ProtoControls Controls => Ctx.Controls;
         public ScrollController Scroll => Ctx.Scroll;
-        public float ElapsedTime { get; private set; }
+        public float ElapsedTime => Ctx.StageTime;
 
         ParallaxBackground _background;
 
@@ -49,6 +49,7 @@ namespace Prototype.Combat
             ctx.Effects = new Effects();
             ctx.Stage = new StageRunner(ctx);
             ctx.Boss = new Boss(ctx);
+            ctx.Log = new PlaytestLogger(ctx);
 
             gameObject.AddComponent<DebugMenu>().Init(this);
             gameObject.AddComponent<CombatHud>().Init(this);
@@ -61,6 +62,7 @@ namespace Prototype.Combat
         public void ResetRun()
         {
             var ctx = Ctx;
+            ctx.Log.BeginRun(); // 진행 중이던 출격은 "중단"으로 기록 (카운터 초기화 전에)
             ctx.Scroll.Reset();
             ctx.MapHeight = MapHeight();
             ctx.Stage.Build(tuning.stageEnabled, ctx.MapHeight);
@@ -80,18 +82,19 @@ namespace Prototype.Combat
             ctx.BossPartKills = 0;
             ctx.TerrainHits = 0;
             ctx.PlayerDowns = 0;
-            ElapsedTime = 0f;
+            ctx.StageTime = 0f;
             Tick(0f);
         }
 
         void Update()
         {
             Controls.SetLayout(tuning.padLayout);
-            if (Controls.Restart.WasPressedThisFrame()) ResetRun();
+            // 디버그 메뉴 입력칸에 타이핑 중에는 R 리셋 무시
+            if (Controls.Restart.WasPressedThisFrame() && GUIUtility.keyboardControl == 0) ResetRun();
 
             var dt = Time.deltaTime;
             // 선회 중 스테이지 타이머 정지 (검증계획 3.5)
-            if (!Ctx.Stage.Cleared && !Ctx.Squadron.Wiped && !Ctx.Scroll.Turning) ElapsedTime += dt;
+            if (!Ctx.Stage.Cleared && !Ctx.Squadron.Wiped && !Ctx.Scroll.Turning) Ctx.StageTime += dt;
             Tick(dt);
         }
 
@@ -115,7 +118,10 @@ namespace Prototype.Combat
 
             var scroll = ctx.Scroll;
             if (tuning.manualTurnEnabled && Controls.Turn.WasPressedThisFrame() && !scroll.Turning && !ctx.Player.Down)
+            {
                 scroll.StartTurn(); // 임의 선회 (Q7)
+                ctx.Log.Turn(manual: true);
+            }
             scroll.Tick(ctx.Squadron.SuppressMove ? 0f : Controls.Horizontal, dt);
             ctx.Player.Facing = scroll.Direction;
             ctx.Player.Turning = scroll.Turning;
@@ -147,13 +153,23 @@ namespace Prototype.Combat
             ctx.Enemies.ResolveCollisions();
             ctx.Effects.Tick(dt);
             ctx.Stage.Tick();
+            EndRunIfFinished();
 
             ctx.PlayerBullets.Render();
             ctx.EnemyBullets.Render();
         }
 
+        void EndRunIfFinished()
+        {
+            var log = Ctx.Log;
+            if (!log.Running) return;
+            if (Ctx.Stage.Cleared) log.EndRun("종료");
+            else if (Ctx.Squadron.Wiped && !tuning.restoreSquadronOnWipe) log.EndRun("전멸");
+        }
+
         void OnDestroy()
         {
+            if (Ctx?.Log != null && Ctx.Log.Running) Ctx.Log.EndRun(Ctx.StageTime > 1f ? "중단" : null);
             Time.timeScale = 1f;
             Ctx?.Controls?.Dispose();
         }

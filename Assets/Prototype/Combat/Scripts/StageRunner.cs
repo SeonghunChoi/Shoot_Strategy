@@ -79,12 +79,18 @@ namespace Prototype.Combat
             if (scroll.Direction > 0 && x >= TurnZone.End - TurnMargin)
             {
                 if (bossDown) Cleared = true;
-                else scroll.StartTurn();
+                else StartAutoTurn();
             }
             else if (scroll.Direction < 0 && x <= TurnZone.Start + TurnMargin && x > TurnZone.Start - 20f)
             {
-                scroll.StartTurn(); // 구역 밖에서 임의 선회로 되돌아가는 중에는 발동하지 않음
+                StartAutoTurn(); // 구역 밖에서 임의 선회로 되돌아가는 중에는 발동하지 않음
             }
+        }
+
+        void StartAutoTurn()
+        {
+            _ctx.Scroll.StartTurn();
+            _ctx.Log.Turn(manual: false);
         }
 
         /// <summary>기체가 지형에 박히면 밖으로 밀어내고 튕기며, 접촉을 시작할 때 피해를 준다.</summary>
@@ -125,8 +131,12 @@ namespace Prototype.Combat
                 if (!_inContact)
                 {
                     _ctx.TerrainHits++;
+                    _ctx.Log.TerrainHit(Current?.Name ?? "무한");
                     _ctx.Effects.Explode(pos + new Vector2(0.6f * player.Facing, floorPen >= ceilPen ? -0.4f : 0.4f), 1.2f);
-                    if (player.Damage(_ctx.Tuning.terrainDamage))
+                    var canHit = player.CanBeHit;
+                    var lost = player.Damage(_ctx.Tuning.terrainDamage);
+                    if (canHit) _ctx.Log.PlayerHit("지형", _ctx.Tuning.terrainDamage, lost);
+                    if (lost)
                     {
                         _ctx.PlayerDowns++;
                         _ctx.Effects.Explode(pos, 4f);

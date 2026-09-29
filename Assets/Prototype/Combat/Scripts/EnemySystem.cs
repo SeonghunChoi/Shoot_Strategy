@@ -81,7 +81,11 @@ namespace Prototype.Combat
             if (e.Alive) return;
 
             _ctx.Effects.Explode(e.Center, e.Kind == EnemyKind.BossPart ? 6f : e.IsGround ? 3.5f : 2.5f, e.IsGround ? _ctx.World.ScrollX : null);
-            if (e.Kind == EnemyKind.BossPart) _ctx.BossPartKills++;
+            if (e.Kind == EnemyKind.BossPart)
+            {
+                _ctx.BossPartKills++;
+                _ctx.Log.Event("보스 부위 파괴", e.Label);
+            }
             else if (e.IsGround) _ctx.GroundKills++;
             else _ctx.AirKills++;
             e.Root.gameObject.SetActive(false); // 제거는 다음 Tick (보스 부위는 Boss가 참조 유지)
@@ -127,21 +131,25 @@ namespace Prototype.Combat
                 if (!Hit.Circles(enemyBullets.WorldPos(i), b.Radius, player.Position, player.HitRadius)) continue;
                 var damage = b.Damage;
                 enemyBullets.Kill(i);
-                if (HitPlayer(damage)) return;
+                if (HitPlayer(damage, "적 탄")) return;
             }
 
             foreach (var e in _enemies)
             {
                 if (!e.Alive || e.IsGround || !e.Overlaps(player.Position, player.HitRadius)) continue;
                 Damage(e, float.MaxValue);
-                if (HitPlayer(_ctx.Tuning.enemyContactDamage)) return;
+                if (HitPlayer(_ctx.Tuning.enemyContactDamage, "적 충돌")) return;
             }
         }
 
-        bool HitPlayer(float damage)
+        /// <summary>기체 피격. 더 이상 맞을 수 없게 되면(무적·손실) true.</summary>
+        bool HitPlayer(float damage, string source)
         {
             var player = _ctx.Player;
-            if (!player.Damage(damage)) return !player.CanBeHit;
+            if (!player.CanBeHit) return true;
+            var lost = player.Damage(damage);
+            _ctx.Log.PlayerHit(source, damage, lost);
+            if (!lost) return !player.CanBeHit;
             _ctx.PlayerDowns++;
             _ctx.Effects.Explode(player.Position, 4f);
             return true;
