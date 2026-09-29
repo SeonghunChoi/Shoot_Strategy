@@ -55,6 +55,7 @@ namespace Prototype.Combat
             gameObject.AddComponent<CombatHud>().Init(this);
             gameObject.AddComponent<RadarHud>().Init(this);
             gameObject.AddComponent<SquadronHud>().Init(this);
+            AutoScreenshot.AttachIfRequested(gameObject);
 
             ResetRun();
         }

@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 825d676b8b1ca884093aa140b8b4b9af, type: 3}
   m_Name: CombatTuning
   m_EditorClassIdentifier: Prototype.Combat::Prototype.Combat.CombatTuning
+  testerName: Julian
   horizontalMode: 1
   baseScrollSpeed: 20
   offsetRange: 16
@@ -35,6 +36,7 @@ MonoBehaviour:
   ringSlowScale: 0.3
   padLayout: 2
   manualTurnEnabled: 0
+  turnDuration: 1.2
   terrainDamage: 10
   terrainBounce: 8
   playerInvincible: 0
@@ -65,6 +67,9 @@ MonoBehaviour:
   antiAirFireInterval: 2
   enemyBulletSpeed: 10
   enemyLeadAccuracy: 1
+  bossTurretHp: 40
+  bossCoreHp: 100
+  bossFireInterval: 2
   stageEnabled: 1
   stageSpawnScale: 1
   radarMode: 3

@@ -39,8 +39,7 @@ namespace Prototype.Combat
         public BulletPool(Color color, Vector3 scale, bool stretch)
         {
             _mesh = Shapes.Mesh(PrimitiveType.Sphere);
-            var material = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { enableInstancing = true };
-            material.SetColor("_BaseColor", color);
+            var material = Shapes.InstancedUnlit(color);
             _renderParams = new RenderParams(material) { worldBounds = new Bounds(Vector3.zero, Vector3.one * 100000f) };
             _scale = scale;
             _stretch = stretch;
