@@ -242,6 +242,7 @@ namespace Prototype.Combat
         /// <summary>
         /// 지면 좌표에서 기체(대지 속도 = 스크롤 속도)의 도달 시점 위치를 겨누는 방향.
         /// 탄의 지면 속도 = shooterVelocity + 방향 × 탄속. 해가 없으면 현재 위치를 겨눈다.
+        /// 예측량은 enemyLeadAccuracy 배율로 줄일 수 있다 (0이면 현재 위치).
         /// </summary>
         Vector2 LeadDirection(Vector2 originWorld, Vector2 shooterVelocity)
         {
@@ -271,7 +272,7 @@ namespace Prototype.Combat
                 }
             }
 
-            var aim = t > 0f ? toTarget + relVel * t : toTarget;
+            var aim = t > 0f ? toTarget + relVel * (t * _ctx.Tuning.enemyLeadAccuracy) : toTarget;
             return aim.normalized;
         }
 

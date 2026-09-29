@@ -32,11 +32,10 @@ namespace Prototype.Combat
     {
         [Header("가로 입력")]
         [Tooltip("가로 입력 모드")] public HorizontalMode horizontalMode = HorizontalMode.PositionOffset;
-        [Tooltip("기본 스크롤 속도"), Range(0f, 30f)] public float baseScrollSpeed = 8f;
+        [Tooltip("기본 스크롤 속도 (B: 시작·순항 속도)"), Range(0f, 30f)] public float baseScrollSpeed = 8f;
         [Tooltip("A: 오프셋 범위 (±)"), Range(0f, 40f)] public float offsetRange = 16f;
         [Tooltip("A: 오프셋 이동 속도"), Range(0f, 40f)] public float offsetSpeed = 12f;
         [Tooltip("B: 최저 속도"), Range(0f, 30f)] public float minSpeed = 3f;
-        [Tooltip("B: 순항 속도"), Range(0f, 30f)] public float cruiseSpeed = 8f;
         [Tooltip("B: 최고 속도"), Range(0f, 40f)] public float maxSpeed = 16f;
         [Tooltip("B: 가속도"), Range(0f, 60f)] public float acceleration = 10f;
         [Tooltip("B+: 순항 복귀 속도"), Range(0f, 30f)] public float cruiseReturnRate = 4f;
@@ -102,6 +101,7 @@ namespace Prototype.Combat
         [Tooltip("공중 적 발사 간격 (초)"), Range(0.5f, 10f)] public float airFireInterval = 3f;
         [Tooltip("대공포 발사 간격 (초)"), Range(0.3f, 10f)] public float antiAirFireInterval = 2f;
         [Tooltip("적 탄속"), Range(2f, 30f)] public float enemyBulletSpeed = 10f;
+        [Tooltip("적 예측 사격 정확도 (0=현재 위치, 1=완전 예측)"), Range(0f, 1f)] public float enemyLeadAccuracy = 1f;
 
         [Header("HUD")]
         [Tooltip("레이더 HUD")] public bool radarEnabled = true;

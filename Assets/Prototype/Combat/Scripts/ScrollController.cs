@@ -4,7 +4,8 @@ namespace Prototype.Combat
 {
     /// <summary>
     /// 가로 입력을 진행 거리로 바꾼다 (검증계획 3.2). 기체는 화면 가로 위치에 고정되고 ScrollX가 -Distance로 이동한다.
-    /// A: 기본 스크롤 + ±범위 오프셋 (떼면 유지) / B: 최저~최고 속도 가감속 / B+: 떼면 순항 속도로 복귀.
+    /// A: 기본 스크롤 + ±범위 오프셋 (떼면 유지) / B: 기본 스크롤에서 시작해 최저~최고 속도 가감속 /
+    /// B+: 떼면 기본 스크롤 속도로 복귀. 플레이 중 기본 스크롤 속도를 바꾸면 B의 현재 속도도 같은 폭만큼 옮긴다.
     /// </summary>
     public sealed class ScrollController
     {
@@ -12,6 +13,7 @@ namespace Prototype.Combat
         HorizontalMode _mode;
         float _baseDistance;
         float _throttleSpeed;
+        float _lastBaseSpeed;
 
         public float Distance { get; private set; }
         public float Offset { get; private set; }
@@ -29,7 +31,8 @@ namespace Prototype.Combat
             _baseDistance = 0f;
             Offset = 0f;
             Distance = 0f;
-            _throttleSpeed = _tuning.cruiseSpeed;
+            _throttleSpeed = _tuning.baseScrollSpeed;
+            _lastBaseSpeed = _tuning.baseScrollSpeed;
             Speed = 0f;
         }
 
@@ -39,6 +42,9 @@ namespace Prototype.Combat
             if (_tuning.horizontalMode != _mode) SwitchMode(_tuning.horizontalMode);
 
             var previous = Distance;
+            _throttleSpeed += _tuning.baseScrollSpeed - _lastBaseSpeed;
+            _lastBaseSpeed = _tuning.baseScrollSpeed;
+
             if (_mode == HorizontalMode.PositionOffset)
             {
                 _baseDistance += _tuning.baseScrollSpeed * dt;
@@ -51,7 +57,7 @@ namespace Prototype.Combat
                 if (hasInput)
                     _throttleSpeed += input * _tuning.acceleration * dt;
                 else if (_mode == HorizontalMode.SpeedCruiseReturn)
-                    _throttleSpeed = Mathf.MoveTowards(_throttleSpeed, _tuning.cruiseSpeed, _tuning.cruiseReturnRate * dt);
+                    _throttleSpeed = Mathf.MoveTowards(_throttleSpeed, _tuning.baseScrollSpeed, _tuning.cruiseReturnRate * dt);
 
                 _throttleSpeed = Mathf.Clamp(_throttleSpeed, _tuning.minSpeed, _tuning.maxSpeed);
                 Distance += _throttleSpeed * dt;
