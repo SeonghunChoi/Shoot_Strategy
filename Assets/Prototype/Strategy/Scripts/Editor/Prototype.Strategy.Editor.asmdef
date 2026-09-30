@@ -1,0 +1,19 @@
+{
+    "name": "Prototype.Strategy.Editor",
+    "rootNamespace": "Prototype.Strategy.Editor",
+    "references": [
+        "Prototype.Strategy",
+        "Prototype.Strategy.Rules"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

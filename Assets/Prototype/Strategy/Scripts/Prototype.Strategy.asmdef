@@ -1,0 +1,17 @@
+{
+    "name": "Prototype.Strategy",
+    "rootNamespace": "Prototype.Strategy",
+    "references": [
+        "Prototype.Strategy.Rules",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
