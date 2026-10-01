@@ -21,6 +21,10 @@ namespace Prototype.Strategy
         public InputAction PadZoom { get; }
         public InputAction PadCursor { get; }
         public InputAction DebugToggle { get; }
+        public InputAction EndTurn { get; }
+        public InputAction Restart { get; }
+        public InputAction PanelUp { get; }
+        public InputAction PanelDown { get; }
 
         public StrategyControls()
         {
@@ -50,6 +54,10 @@ namespace Prototype.Strategy
 
             PadCursor = _map.AddAction("PadCursor", InputActionType.Value, "<Gamepad>/leftStick", expectedControlLayout: "Vector2");
             DebugToggle = Button("DebugToggle", "<Keyboard>/f1", "<Gamepad>/select");
+            EndTurn = Button("EndTurn", "<Keyboard>/enter", "<Keyboard>/numpadEnter", "<Gamepad>/start");
+            Restart = Button("Restart", "<Keyboard>/r");
+            PanelUp = Button("PanelUp", "<Gamepad>/dpad/up");
+            PanelDown = Button("PanelDown", "<Gamepad>/dpad/down");
 
             _map.Enable();
         }

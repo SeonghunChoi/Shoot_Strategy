@@ -84,6 +84,38 @@ namespace Prototype.Strategy
             }
         }
 
+        /// <summary>헥스의 dir 방향 변 (영역 경계선). 변 dir은 꼭짓점 dir과 dir+1 사이.</summary>
+        public void AddEdge(Hex h, int dir, float width, Color color)
+        {
+            var center = HexLayout.ToWorld(h);
+            var a = center + HexLayout.Corner(dir);
+            var b = center + HexLayout.Corner((dir + 1) % 6);
+            // 변을 안쪽으로 width만큼 두께를 준다
+            var ai = center + HexLayout.Corner(dir, HexLayout.Size - width);
+            var bi = center + HexLayout.Corner((dir + 1) % 6, HexLayout.Size - width);
+            AddQuad(a, b, bi, ai, color);
+        }
+
+        /// <summary>두 점을 잇는 띠 (활주로 선 등).</summary>
+        public void AddSegment(Vector2 a, Vector2 b, float width, Color color)
+        {
+            var d = (b - a).normalized;
+            var n = new Vector2(-d.y, d.x) * (width * 0.5f);
+            AddQuad(a + n, b + n, b - n, a - n, color);
+        }
+
+        void AddQuad(Vector2 a, Vector2 b, Vector2 c, Vector2 d, Color color)
+        {
+            var start = _vertices.Count;
+            _vertices.Add(a);
+            _vertices.Add(b);
+            _vertices.Add(c);
+            _vertices.Add(d);
+            for (var i = 0; i < 4; i++) _colors.Add(color);
+            _triangles.Add(start); _triangles.Add(start + 1); _triangles.Add(start + 2);
+            _triangles.Add(start); _triangles.Add(start + 2); _triangles.Add(start + 3);
+        }
+
         public void Apply()
         {
             // 정점 색은 셰이더에서 변환되지 않으므로 Linear 색 공간이면 여기서 바꾼다 (IMGUI 견본과 같은 색)
