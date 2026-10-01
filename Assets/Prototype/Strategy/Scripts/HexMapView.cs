@@ -96,6 +96,17 @@ namespace Prototype.Strategy
                         _territory.AddSegment(c, HexLayout.ToWorld(n), 0.3f, RunwayColor);
                 }
             }
+            // 재배치 중인 편대: 출발 거점 → 목적지 화살표 (띠 + 끝 표식)
+            foreach (var s in world.Squadrons)
+            {
+                if (s.MoveToBaseId == 0) continue;
+                var from = HexLayout.ToWorld(world.BaseById(s.BaseId).Hex);
+                var to = HexLayout.ToWorld(world.BaseById(s.MoveToBaseId).Hex);
+                var color = new Color(1f, 0.85f, 0.2f, 0.9f);
+                _territory.AddSegment(from, to, 0.12f, color);
+                var tip = to + (from - to).normalized * 0.7f;
+                _territory.AddSegment(tip, to + (from - to).normalized * 0.45f, 0.3f, color);
+            }
             _territory.Apply();
         }
 
@@ -108,7 +119,15 @@ namespace Prototype.Strategy
             _overlay.Clear();
             if (highlight != null && highlight.Count > 0)
             {
-                foreach (var h in highlight) _overlay.AddFilled(h, CellScale, highlightColor);
+                var set = new HashSet<Hex>(highlight);
+                var edge = new Color(highlightColor.r, highlightColor.g, highlightColor.b, 1f);
+                foreach (var h in highlight)
+                {
+                    _overlay.AddFilled(h, CellScale, highlightColor);
+                    // 바깥 경계 변만 굵게 그려 영역이 한눈에 보이게
+                    for (var dir = 0; dir < 6; dir++)
+                        if (!set.Contains(h.Neighbor(dir))) _overlay.AddEdge(h, dir, 0.12f, edge);
+                }
             }
             else if (hover is { } hv && selected is { } sel && hv != sel && _map.Contains(hv))
             {

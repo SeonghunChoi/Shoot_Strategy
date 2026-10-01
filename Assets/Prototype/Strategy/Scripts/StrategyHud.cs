@@ -12,10 +12,10 @@ namespace Prototype.Strategy
     public sealed class StrategyHud : MonoBehaviour
     {
         const float BarHeight = 34f;
-        const float SideWidth = 310f;
+        const float SideWidth = 400f;
         const float LogWidth = 380f;
         const float LogHeight = 150f;
-        const float HelpHeight = 200f;
+        const float HelpHeight = 220f;
 
         StrategyBootstrap _boot;
         bool _showHelp;
@@ -30,6 +30,8 @@ namespace Prototype.Strategy
         GUIStyle _green;
         GUIStyle _wrap;
         System.Action _pending;
+        int _pilotPickFor;    // 파일럿 배정 목록을 펼친 기체 Id
+        int _aircraftPickFor; // 기체 추가 목록을 펼친 편대 Id
 
         // 패드 패널 조작: 오른쪽 패널의 버튼을 그리는 순서대로 모아 두고 방향키 위·아래로 초점을 옮긴다
         // 목록은 Layout 이벤트에서만 채우고, 다른 이벤트에서는 그리는 순서(_padIndex)로만 초점을 맞춘다
@@ -206,6 +208,8 @@ namespace Prototype.Strategy
                 var c = HexLayout.ToWorld(b.Hex);
                 MapLabel(c, b.Grade.ToString(), _mapLabel, Color.white);
                 MapLabel(c + new Vector2(0f, 0.72f), b.Name, _mapLabelSmall, Color.white);
+                var squadrons = w.SquadronsAt(b).Count();
+                if (squadrons > 0) MapLabel(c + new Vector2(0f, -0.62f), $"편대 {squadrons}", _mapLabelSmall, new Color(0.7f, 0.9f, 1f));
             }
 
             var eb = _boot.ExpandBase;
@@ -246,26 +250,36 @@ namespace Prototype.Strategy
                 if (_focusRect.yMax + pad > _sideScroll.y + viewHeight) _sideScroll.y = _focusRect.yMax + pad - viewHeight;
                 if (_focusRect.y - pad < _sideScroll.y) _sideScroll.y = Mathf.Max(0f, _focusRect.y - pad);
             }
-            _sideScroll = GUILayout.BeginScrollView(_sideScroll);
+            // 세로만 스크롤 (가로 넘침은 잘라서 가로 막대가 생기지 않게)
+            _sideScroll = GUILayout.BeginScrollView(_sideScroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar);
 
             var w = _boot.World;
-            var shown = _boot.Selected ?? _boot.Cursor.Hover;
-            if (shown is { } h)
-            {
-                var cell = w.Map[h];
-                var (col, row) = h.ToOffset();
-                GUILayout.Label(_boot.Selected != null ? "선택한 칸" : "커서 칸", ProtoGui.Bold);
-                GUILayout.Label($"열 {col}, 행 {row}   지형 {TerrainName(cell.Terrain)}{(cell.Oil ? " · 유전" : "")}", ProtoGui.Small);
-            }
-            else
-            {
-                GUILayout.Label("칸을 클릭하면 거점 패널이 열립니다", ProtoGui.Small);
-            }
+            DrawTabs();
 
-            if (_boot.Selected is { } sel && w.BaseOf(sel) is { Owner: World.Player } b)
-                DrawBasePanel(b, sel);
-            else
-                DrawBaseSummary();
+            switch (_boot.Tab)
+            {
+                case PanelTab.Hangar: DrawHangarTab(); break;
+                case PanelTab.Shop: DrawShopTab(); break;
+                case PanelTab.Pilots: DrawPilotsTab(); break;
+                default:
+                    var shown = _boot.Selected ?? _boot.Cursor.Hover;
+                    if (shown is { } h)
+                    {
+                        var cell = w.Map[h];
+                        var (col, row) = h.ToOffset();
+                        GUILayout.Label(_boot.Selected != null ? "선택한 칸" : "커서 칸", ProtoGui.Bold);
+                        GUILayout.Label($"열 {col}, 행 {row}   지형 {TerrainName(cell.Terrain)}{(cell.Oil ? " · 유전" : "")}", ProtoGui.Small);
+                    }
+                    else
+                    {
+                        GUILayout.Label("칸을 클릭하면 거점 패널이 열립니다", ProtoGui.Small);
+                    }
+                    if (_boot.Selected is { } sel && w.BaseOf(sel) is { Owner: World.Player } b)
+                        DrawBasePanel(b, sel);
+                    else
+                        DrawBaseSummary();
+                    break;
+            }
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
@@ -389,6 +403,187 @@ namespace Prototype.Strategy
             if (!string.IsNullOrEmpty(detail)) GUILayout.Label(detail, reason != null ? _red : ProtoGui.Small);
         }
 
+        // ---- 탭 ----
+
+        static readonly string[] TabNames = { "거점", "격납고", "상점", "명부" };
+
+        void DrawTabs()
+        {
+            var current = (int)_boot.Tab;
+            var next = GUILayout.Toolbar(current, TabNames);
+            if (next != current) Do(() => _boot.Tab = (PanelTab)next);
+            GUILayout.Label("Q / E · LB / RB 로 탭 전환", ProtoGui.Small);
+            GUILayout.Space(4);
+        }
+
+        // ---- 격납고 ----
+
+        void DrawHangarTab()
+        {
+            var w = _boot.World;
+            var bal = _boot.Balance;
+            var selectedBase = _boot.Selected is { } sel ? w.BaseOf(sel) : null;
+            if (selectedBase is { Owner: World.Player })
+            {
+                GUILayout.Label($"{selectedBase.Name}  ·  격납고 {w.SquadronsAt(selectedBase).Count()}/{SquadronRules.HangarCapacity(w, bal, selectedBase)}", ProtoGui.Bold);
+                GUILayout.Label($"작전 반경 {SquadronRules.OperationRadius(w, bal, selectedBase)}   정비소 {SquadronRules.MaintenanceGrade(w, selectedBase)}등급   유흥가 {SquadronRules.EntertainmentGrade(w, selectedBase)}등급", ProtoGui.Small);
+                ActionButton("새 편대 편성", SquadronRules.CanCreateSquadron(w, bal, selectedBase), () =>
+                {
+                    var ns = SquadronRules.CreateSquadron(w, bal, selectedBase);
+                    if (ns != null) _boot.SelectedSquadronId = ns.Id;
+                });
+                foreach (var s in w.SquadronsAt(selectedBase).ToList()) DrawSquadron(s);
+                foreach (var s in w.Squadrons.Where(x => x.MoveToBaseId == selectedBase.Id).ToList())
+                    GUILayout.Label($"{s.Name}  이동 중 → 다음 턴 도착", ProtoGui.Small);
+            }
+            else
+            {
+                GUILayout.Label("편대 전체 (거점을 고르면 그 거점만)", ProtoGui.Bold);
+                foreach (var s in w.Squadrons.ToList()) DrawSquadron(s);
+            }
+
+            GUILayout.Space(8);
+            GUILayout.Label($"예비 기체 {w.ReserveAircraft.Count()}기 · 대기 파일럿 {w.IdlePilots.Count()}명  (상점·명부 탭)", ProtoGui.Small);
+        }
+
+        void DrawSquadron(Squadron s)
+        {
+            var w = _boot.World;
+            var bal = _boot.Balance;
+            var b = w.BaseById(s.BaseId);
+            var selected = _boot.SelectedSquadronId == s.Id;
+
+            GUILayout.Space(8);
+            GUILayout.Label($"{(selected ? "● " : "")}{s.Name}  ·  {b.Name}  ·  {s.AircraftIds.Count}/{bal.SquadronMaxSize}기", ProtoGui.Bold);
+            var maint = SquadronRules.MaintenanceGrade(w, b);
+            var repair = maint > 0 ? maint * bal.RepairPerMaintenanceGrade : bal.RepairWithoutMaintenance;
+            var rest = bal.FatigueRecovery + SquadronRules.EntertainmentGrade(w, b) * bal.FatigueRecoveryPerEntertainmentGrade;
+            GUILayout.Label($"이 거점에서 턴마다 수리 {repair}%{(maint == 0 ? " (정비소 없음)" : "")} · 피로 −{rest}", ProtoGui.Small);
+            if (s.MoveToBaseId != 0)
+            {
+                GUILayout.Label($"재배치 중 → {w.BaseById(s.MoveToBaseId).Name} (다음 턴 도착)", _green);
+                PanelButton("재배치 취소", () => SquadronRules.CancelMove(s));
+            }
+
+            foreach (var id in s.AircraftIds.ToList())
+            {
+                var a = w.AircraftById(id);
+                var def = bal.Def(a.Type);
+                var p = w.PilotById(a.PilotId);
+                var cannot = SquadronRules.CannotSortie(w, bal, a);
+                var status = p == null ? "파일럿 없음" : $"{p.Name}  숙련 {p.Skill}{(p.Aptitude == a.Type ? " ★" : "")}  피로 {p.Fatigue}";
+                GUILayout.Label($"{def.Name} ({RoleName(def.Role)})  손상 {a.Damage}%", a.Damage >= 50 ? _red : GUI.skin.label);
+                GUILayout.Label(status + (cannot != null ? $"   [{cannot}]" : ""), cannot != null ? _red : ProtoGui.Small);
+
+                GUILayout.BeginHorizontal();
+                var aircraft = a;
+                PanelButton(_pilotPickFor == a.Id ? "파일럿 목록 닫기" : "파일럿 배정", () => _pilotPickFor = _pilotPickFor == aircraft.Id ? 0 : aircraft.Id);
+                if (p != null) PanelButton("파일럿 해제", () => SquadronRules.UnassignPilot(w, aircraft));
+                var sq = s;
+                PanelButton("편대에서 빼기", () => SquadronRules.DetachAircraft(w, sq, aircraft));
+                GUILayout.EndHorizontal();
+
+                if (_pilotPickFor == a.Id)
+                {
+                    var idle = w.IdlePilots.ToList();
+                    if (idle.Count == 0) GUILayout.Label("대기 파일럿 없음 (상점 탭에서 고용)", _red);
+                    foreach (var cand in idle)
+                    {
+                        var pilot = cand;
+                        PanelButton($"  {cand.Name}  숙련 {cand.Skill}  숙련 기종 {bal.Def(cand.Aptitude).Name}{(cand.Aptitude == a.Type ? " ★" : "")}  피로 {cand.Fatigue}",
+                            () => { SquadronRules.AssignPilot(w, aircraft, pilot); _pilotPickFor = 0; }, style: GUI.skin.label);
+                    }
+                }
+            }
+
+            GUILayout.BeginHorizontal();
+            var sq2 = s;
+            PanelButton(selected ? "반경 숨기기" : "작전 반경 보기", () => _boot.SelectedSquadronId = selected ? 0 : sq2.Id);
+            if (_boot.MovingSquadron == s) PanelButton("재배치 취소", _boot.StopMove);
+            else PanelButton("재배치…", () => _boot.StartMove(sq2), enabled: s.MoveToBaseId == 0 && s.AircraftIds.Count > 0);
+            GUILayout.EndHorizontal();
+            if (_boot.MovingSquadron == s) GUILayout.Label("초록 거점을 클릭 / 패드 South (East로 취소)", _wrap);
+
+            GUILayout.BeginHorizontal();
+            PanelButton(_aircraftPickFor == s.Id ? "기체 목록 닫기" : "기체 추가", () => _aircraftPickFor = _aircraftPickFor == sq2.Id ? 0 : sq2.Id,
+                enabled: s.AircraftIds.Count < bal.SquadronMaxSize);
+            PanelButton("디버그: 손상 50·피로 80", () => SquadronRules.SimulateWear(w, sq2, 50, 80), enabled: s.AircraftIds.Count > 0);
+            ActionButton("해산", SquadronRules.CanDisband(w, s), () => { SquadronRules.Disband(w, sq2); if (_boot.SelectedSquadronId == sq2.Id) _boot.SelectedSquadronId = 0; });
+            GUILayout.EndHorizontal();
+
+            if (_aircraftPickFor == s.Id)
+            {
+                var reserve = w.ReserveAircraft.ToList();
+                if (reserve.Count == 0) GUILayout.Label("예비 기체 없음 (상점 탭에서 구매)", _red);
+                foreach (var cand in reserve)
+                {
+                    var aircraft = cand;
+                    var reason = SquadronRules.CanAttachAircraft(w, bal, s, cand);
+                    ActionButton($"  {bal.Def(cand.Type).Name}  손상 {cand.Damage}%", reason,
+                        () => { SquadronRules.AttachAircraft(w, sq2, aircraft); _aircraftPickFor = 0; });
+                }
+            }
+        }
+
+        // ---- 상점 ----
+
+        void DrawShopTab()
+        {
+            var w = _boot.World;
+            var bal = _boot.Balance;
+            GUILayout.Label("기체 구매", ProtoGui.Bold);
+            foreach (var def in bal.Aircraft.Values)
+            {
+                var type = def.Type;
+                var reason = SquadronRules.CanBuy(w, bal, type);
+                ActionButton($"{def.Name}  {RoleName(def.Role)}  {def.Price}", reason, () => SquadronRules.Buy(w, bal, type),
+                    $"{BaseRules.SizeName(def.Size)} · {def.Tier}티어 · 체력 {def.Hp} · 공중 {def.Air} 지상 {def.Ground} 폭격 {def.Bombing}");
+            }
+
+            GUILayout.Space(8);
+            GUILayout.Label("파일럿 고용", ProtoGui.Bold);
+            ActionButton($"일반 파일럿 고용  {bal.HirePilotCost}  (급여 {bal.SalaryRegular}/턴)", SquadronRules.CanHire(w, bal), () => SquadronRules.Hire(w, bal));
+
+            GUILayout.Space(8);
+            GUILayout.Label($"예비 기체 판매 (구매가의 {bal.SellRatio:P0}, 손상만큼 감액)", ProtoGui.Bold);
+            var reserve = w.ReserveAircraft.ToList();
+            if (reserve.Count == 0) GUILayout.Label("예비 기체 없음", ProtoGui.Small);
+            foreach (var a in reserve)
+            {
+                var aircraft = a;
+                PanelButton($"{bal.Def(a.Type).Name}  손상 {a.Damage}%  → 판매 {SquadronRules.SellPrice(bal, a)}", () => SquadronRules.Sell(w, bal, aircraft));
+            }
+            GUILayout.Label("편대에 든 기체는 격납고 탭에서 먼저 빼야 합니다", ProtoGui.Small);
+        }
+
+        // ---- 명부 ----
+
+        void DrawPilotsTab()
+        {
+            var w = _boot.World;
+            var bal = _boot.Balance;
+            GUILayout.Label($"파일럿 {w.Pilots.Count}명  ·  급여 합계 {SquadronRules.Salaries(w, bal)}/턴", ProtoGui.Bold);
+            foreach (var p in w.Pilots)
+            {
+                var a = w.AircraftById(p.AircraftId);
+                var where = a == null ? "대기" : $"{bal.Def(a.Type).Name} · {w.SquadronById(a.SquadronId)?.Name ?? "예비"}";
+                var exhausted = SquadronRules.IsExhausted(bal, p);
+                GUILayout.Label($"{(p.Named ? "★ " : "")}{p.Name}  숙련 {p.Skill}  숙련 기종 {bal.Def(p.Aptitude).Name}  급여 {bal.Salary(p)}", ProtoGui.Small);
+                GUILayout.Label($"   피로 {p.Fatigue}{(exhausted ? " 탈진" : "")}   {where}", exhausted ? _red : ProtoGui.Small);
+            }
+            GUILayout.Space(6);
+            GUILayout.Label($"피로: 출격하지 않은 턴마다 −{bal.FatigueRecovery}, 유흥가 등급당 −{bal.FatigueRecoveryPerEntertainmentGrade} 추가. {bal.FatigueExhausted} 이상 탈진", _wrap);
+        }
+
+        static string RoleName(AircraftRole r) => r switch
+        {
+            AircraftRole.Fighter => "제공",
+            AircraftRole.Attacker => "공격",
+            AircraftRole.Multirole => "다용도",
+            AircraftRole.Bomber => "폭격",
+            _ => "",
+        };
+
         // ---- 턴 로그 ----
 
         void DrawLog()
@@ -421,6 +616,7 @@ namespace Prototype.Strategy
             GUILayout.Label("턴 종료: Enter / Start    다시 시작: R", ProtoGui.Small);
             GUILayout.Label("아군 영역 칸을 고르면 거점 패널: 확장·등급·시설 건설", ProtoGui.Small);
             GUILayout.Label("패드 패널 조작: 방향키 위·아래로 초점, South 실행, East 해제", ProtoGui.Small);
+            GUILayout.Label("탭 전환: Q / E · LB / RB    (거점 · 격납고 · 상점 · 명부)", ProtoGui.Small);
             GUILayout.Label("예상 수지에 마우스를 올리면 항목별 내역", ProtoGui.Small);
             GUILayout.EndArea();
         }

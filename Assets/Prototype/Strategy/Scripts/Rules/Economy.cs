@@ -31,8 +31,14 @@ namespace Prototype.Strategy.Rules
             if (mine > 0) lines.Add(new BudgetLine { Label = "광산", Amount = mine });
             if (finance > 0) lines.Add(new BudgetLine { Label = "금융 이자", Amount = finance });
 
+            var refund = SquadronRules.EntertainmentRefund(w, bal);
+            if (refund > 0) lines.Add(new BudgetLine { Label = "유흥가 급여 환수", Amount = refund });
+
             var hexes = w.OwnedHexes(World.Player).Count();
             lines.Add(new BudgetLine { Label = $"영역 유지비 ({hexes}칸)", Amount = -bal.UpkeepPerHex * hexes });
+            lines.Add(new BudgetLine { Label = $"파일럿 급여 ({w.Pilots.Count}명)", Amount = -SquadronRules.Salaries(w, bal) });
+            var (repaired, repairCost) = SquadronRules.RepairForecast(w, bal);
+            if (repairCost > 0) lines.Add(new BudgetLine { Label = $"기체 수리 ({repaired}%)", Amount = -repairCost });
             return lines;
         }
 
@@ -48,6 +54,7 @@ namespace Prototype.Strategy.Rules
             var lines = Forecast(w, bal);
             var net = Net(lines);
             w.Funds += net;
+            SquadronRules.EndTurn(w, bal);
             w.DeficitStreak = w.Funds < 0 ? w.DeficitStreak + 1 : 0;
 
             var report = new TurnReport

@@ -132,8 +132,8 @@ namespace Prototype.Strategy.Tests
         {
             var bal = new Balance();
             var w = World.Create(1, bal);
-            // 영역 10칸 × 10 = 100
-            Assert.AreEqual(bal.HqBudget - 100, Economy.Net(Economy.Forecast(w, bal)));
+            // 영역 10칸 × 10 = 100, 급여 네임드 80 + 일반 40 × 3 = 200 → 순 0 (의도한 시작 상태)
+            Assert.AreEqual(bal.HqBudget - 100 - 200, Economy.Net(Economy.Forecast(w, bal)));
         }
 
         [Test]
@@ -142,7 +142,7 @@ namespace Prototype.Strategy.Tests
             var bal = new Balance();
             var w = World.Create(1, bal);
             var report = Economy.EndTurn(w, bal);
-            Assert.AreEqual(1200, w.Funds);
+            Assert.AreEqual(1000, w.Funds);
             Assert.AreEqual(2, w.Turn);
             Assert.AreEqual(1, report.Turn);
         }
@@ -168,7 +168,8 @@ namespace Prototype.Strategy.Tests
         {
             var bal = new Balance();
             var w = World.Create(1, bal);
-            w.Funds = -150; // +200이면 0 이상으로 회복
+            w.Pilots.Clear();  // 급여 없음 → 순 +200
+            w.Funds = -150;    // +200이면 0 이상으로 회복
             Economy.EndTurn(w, bal);
             Assert.AreEqual(0, w.DeficitStreak);
         }

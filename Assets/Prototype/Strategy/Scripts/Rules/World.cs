@@ -55,6 +55,18 @@ namespace Prototype.Strategy.Rules
         public readonly Dictionary<Hex, Facility> Facilities = new();
         public readonly List<TurnReport> Reports = new();
 
+        public readonly List<Aircraft> Aircraft = new();
+        public readonly List<Pilot> Pilots = new();
+        public readonly List<Squadron> Squadrons = new();
+        public int NextId = 1;
+
+        public Aircraft AircraftById(int id) => id == 0 ? null : Aircraft.FirstOrDefault(a => a.Id == id);
+        public Pilot PilotById(int id) => id == 0 ? null : Pilots.FirstOrDefault(p => p.Id == id);
+        public Squadron SquadronById(int id) => id == 0 ? null : Squadrons.FirstOrDefault(s => s.Id == id);
+        public IEnumerable<Squadron> SquadronsAt(Base b) => Squadrons.Where(s => s.BaseId == b.Id);
+        public IEnumerable<Aircraft> ReserveAircraft => Aircraft.Where(a => a.SquadronId == 0);
+        public IEnumerable<Pilot> IdlePilots => Pilots.Where(p => p.AircraftId == 0);
+
         public Base BaseById(int id) => Bases.First(b => b.Id == id);
 
         public Base BaseOf(Hex h) => Territory.TryGetValue(h, out var id) ? BaseById(id) : null;

@@ -77,8 +77,36 @@ namespace Prototype.Strategy.Rules
 
         public readonly Dictionary<FacilityType, FacilityDef> Facilities = new();
 
+        // ---- 편대·기체·파일럿 (3단계) ----
+        public int SquadronMaxSize = 4;
+        public int SquadronsPerHangar = 2;
+        public int OperationRadius = 3;
+        public int DepotRadiusBonus = 1;
+        public int SalaryRegular = 40;
+        public int SalaryNamed = 80;
+        public int HirePilotCost = 200;
+        public float SellRatio = 0.5f;
+        /// <summary>유흥가: 주둔 파일럿 급여 환수율 = 등급 × 이 값.</summary>
+        public float EntertainmentRefundPerGrade = 0.15f;
+        /// <summary>턴당 손상 회복(%): 정비소 등급 × 이 값. 정비소 없으면 RepairWithoutMaintenance.</summary>
+        public int RepairPerMaintenanceGrade = 15;
+        public int RepairWithoutMaintenance = 5;
+        /// <summary>수리비 = 기체 가격 × 회복 비율 × 이 값.</summary>
+        public float RepairCostFactor = 0.3f;
+        public int FatigueRecovery = 20;
+        public int FatigueRecoveryPerEntertainmentGrade = 10;
+        /// <summary>이 값 이상이면 탈진 (출격 불가).</summary>
+        public int FatigueExhausted = 70;
+
+        public readonly Dictionary<AircraftType, AircraftDef> Aircraft = new();
+
         public Balance()
         {
+            AddAircraft(AircraftType.F5, "F-5", AircraftRole.Fighter, 1, 1, 400, 80, air: 8, ground: 3, bombing: 1);
+            AddAircraft(AircraftType.A4, "A-4", AircraftRole.Attacker, 1, 1, 450, 100, air: 4, ground: 8, bombing: 3);
+            AddAircraft(AircraftType.F4, "F-4", AircraftRole.Multirole, 2, 2, 900, 120, air: 7, ground: 6, bombing: 4);
+            AddAircraft(AircraftType.B57, "B-57", AircraftRole.Bomber, 3, 2, 1400, 160, air: 1, ground: 5, bombing: 10);
+
             Add(FacilityType.Hangar, "격납고", "격", 150, 1, false, effect: "주둔 편대 2 (3단계)");
             Add(FacilityType.Runway, "활주로", "활", 100, 1, false, effect: "직선 연속 길이 = 운용 기체 크기");
             Add(FacilityType.Barracks, "병영", "병", 150, 1, true, effect: "지상군 고용 (6단계)");
@@ -104,6 +132,20 @@ namespace Prototype.Strategy.Rules
             };
         }
 
+        void AddAircraft(AircraftType type, string name, AircraftRole role, int size, int tier, int price, int hp,
+            int air, int ground, int bombing)
+        {
+            Aircraft[type] = new AircraftDef
+            {
+                Type = type, Name = name, Role = role, Size = size, Tier = tier, Price = price, Hp = hp,
+                Air = air, Ground = ground, Bombing = bombing,
+            };
+        }
+
         public FacilityDef Def(FacilityType type) => Facilities[type];
+
+        public AircraftDef Def(AircraftType type) => Aircraft[type];
+
+        public int Salary(Pilot p) => p.Named ? SalaryNamed : SalaryRegular;
     }
 }

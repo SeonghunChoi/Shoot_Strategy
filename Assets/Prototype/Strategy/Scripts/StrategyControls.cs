@@ -25,6 +25,8 @@ namespace Prototype.Strategy
         public InputAction Restart { get; }
         public InputAction PanelUp { get; }
         public InputAction PanelDown { get; }
+        public InputAction TabPrev { get; }
+        public InputAction TabNext { get; }
 
         public StrategyControls()
         {
@@ -58,6 +60,8 @@ namespace Prototype.Strategy
             Restart = Button("Restart", "<Keyboard>/r");
             PanelUp = Button("PanelUp", "<Gamepad>/dpad/up");
             PanelDown = Button("PanelDown", "<Gamepad>/dpad/down");
+            TabPrev = Button("TabPrev", "<Keyboard>/q", "<Gamepad>/leftShoulder");
+            TabNext = Button("TabNext", "<Keyboard>/e", "<Gamepad>/rightShoulder");
 
             _map.Enable();
         }

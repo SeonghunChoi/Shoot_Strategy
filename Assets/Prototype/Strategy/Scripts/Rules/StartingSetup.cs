@@ -19,6 +19,24 @@ namespace Prototype.Strategy.Rules
             world.Territory[Hex.FromOffset(5, 9)] = south.Id;
             Put(world, 3, 9, FacilityType.Hangar);
             Put(world, 5, 9, FacilityType.Runway);
+
+            // 기체 F-5 ×2, A-4 ×1 / 파일럿 네임드 1 + 일반 3 / 편대 2개 (해안 기지에 1·2편대)
+            var f5a = SquadronRules.AddAircraft(world, AircraftType.F5);
+            var f5b = SquadronRules.AddAircraft(world, AircraftType.F5);
+            var a4 = SquadronRules.AddAircraft(world, AircraftType.A4);
+            var ace = SquadronRules.AddPilot(world, "강민호", named: true, skill: 4, AircraftType.F5);
+            var p1 = SquadronRules.AddPilot(world, "파일럿 1", named: false, skill: 2, AircraftType.F5);
+            var p2 = SquadronRules.AddPilot(world, "파일럿 2", named: false, skill: 2, AircraftType.A4);
+            SquadronRules.AddPilot(world, "파일럿 3", named: false, skill: 1, AircraftType.A4);
+
+            var s1 = SquadronRules.AddSquadron(world, "1편대", coast);
+            var s2 = SquadronRules.AddSquadron(world, "2편대", coast);
+            SquadronRules.AttachAircraft(world, s1, f5a);
+            SquadronRules.AttachAircraft(world, s1, a4);
+            SquadronRules.AttachAircraft(world, s2, f5b);
+            SquadronRules.AssignPilot(world, f5a, ace);
+            SquadronRules.AssignPilot(world, a4, p2);
+            SquadronRules.AssignPilot(world, f5b, p1);
         }
 
         static Base AddBase(World world, string name, int col, int row, int grade)
