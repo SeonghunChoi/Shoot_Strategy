@@ -100,15 +100,23 @@ namespace Prototype.Strategy.Tests
         }
 
         [Test]
-        public void Outpost_OnlyOnEdgeAndBecomesNewBase()
+        public void Outpost_NeedsDistanceAndAirReach()
         {
             _w.Funds = 100000;
-            Assert.IsNotNull(BaseRules.CanBuildOutpost(_w, _bal, _coast.Hex));
-            var nb = BaseRules.BuildOutpost(_w, _bal, Off(2, 4));
+            Assert.AreEqual("거점 본부 칸", BaseRules.CanBuildOutpost(_w, _bal, _coast.Hex));
+            StringAssert.Contains("떨어져야", BaseRules.CanBuildOutpost(_w, _bal, Off(2, 4))); // 인접 칸 불가
+            // (7,4): 해안 기지에서 거리 4 — 급유 없는 반경 3 밖이지만 급유(×2 = 6) 포함 도달 가능
+            var target = Off(7, 4);
+            Assert.IsNull(BaseRules.CanBuildOutpost(_w, _bal, target));
+            var cost = BaseRules.OutpostCost(_w, _bal, target);
+            Assert.AreEqual(_bal.OutpostCost + _bal.OutpostCostPerDistance * 4, cost);
+            var nb = BaseRules.BuildOutpost(_w, _bal, target);
             Assert.IsNotNull(nb);
             Assert.AreEqual(1, nb.Grade);
-            Assert.AreEqual(nb.Id, _w.Territory[Off(2, 4)]);
-            Assert.AreEqual(6, _w.TerritoryOf(_coast).Count());
+            Assert.AreEqual(nb.Id, _w.Territory[target]);
+            Assert.AreEqual(100000 - cost, _w.Funds);
+            // 아무 편대도 닿지 않는 먼 칸은 불가
+            StringAssert.Contains("닿지", BaseRules.CanBuildOutpost(_w, _bal, Off(15, 11)));
         }
 
         [Test]

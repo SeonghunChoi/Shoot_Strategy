@@ -112,3 +112,24 @@ namespace Prototype.Strategy.Tests
         }
     }
 }
+
+namespace Prototype.Strategy.Tests
+{
+    public class SquadronOrderTests
+    {
+        [Test]
+        public void ReorderAircraft_SwapsWithinSquadron()
+        {
+            var bal = new Balance();
+            var w = World.Create(1, bal);
+            var s = w.Squadrons[0];
+            var first = w.AircraftById(s.AircraftIds[0]);
+            var second = w.AircraftById(s.AircraftIds[1]);
+            SquadronRules.ReorderAircraft(s, second, -1);
+            Assert.AreEqual(second.Id, s.AircraftIds[0]);
+            Assert.AreEqual(first.Id, s.AircraftIds[1]);
+            SquadronRules.ReorderAircraft(s, second, -1); // 맨 앞에서는 변화 없음
+            Assert.AreEqual(second.Id, s.AircraftIds[0]);
+        }
+    }
+}

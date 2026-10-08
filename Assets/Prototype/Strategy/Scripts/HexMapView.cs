@@ -54,7 +54,10 @@ namespace Prototype.Strategy
             _terrain.Apply();
         }
 
-        public static Color OwnerColor(int owner) => owner == World.Player ? PlayerColor : new Color(0.9f, 0.3f, 0.25f);
+        public static readonly Color EnemyColor = new(0.9f, 0.3f, 0.25f);
+        public static readonly Color PlanColor = new(1f, 0.6f, 0.15f);
+
+        public static Color OwnerColor(int owner) => owner == World.Player ? PlayerColor : EnemyColor;
 
         /// <summary>영역 색·경계, 거점 본부, 활주로 선.</summary>
         public void UpdateTerritory(World world)
@@ -96,6 +99,27 @@ namespace Prototype.Strategy
                         _territory.AddSegment(c, HexLayout.ToWorld(n), 0.3f, RunwayColor);
                 }
             }
+            // 적 부대: 빨간 마름모 (작은 헥스 + 테두리)
+            foreach (var u in world.EnemyUnits)
+            {
+                _territory.AddFilled(u.Hex, 0.55f, new Color(0.35f, 0.08f, 0.06f, 0.95f));
+                _territory.AddOutline(u.Hex, 0.55f, 0.45f, EnemyColor);
+            }
+
+            // 출격 계획: 작전 지역(목표 + 인접 6칸) 바깥 경계를 주황 테두리로, 목표 칸은 진하게
+            foreach (var plan in world.SortiePlan)
+            {
+                var area = new HashSet<Hex>(SortieRules.OperationArea(plan.Target));
+                foreach (var h in area)
+                {
+                    if (!_map.Contains(h)) continue;
+                    _territory.AddFilled(h, CellScale, new Color(PlanColor.r, PlanColor.g, PlanColor.b, 0.12f));
+                    for (var dir = 0; dir < 6; dir++)
+                        if (!area.Contains(h.Neighbor(dir))) _territory.AddEdge(h, dir, 0.1f, PlanColor);
+                }
+                _territory.AddOutline(plan.Target, 0.9f, 0.78f, PlanColor);
+            }
+
             // 재배치 중인 편대: 출발 거점 → 목적지 화살표 (띠 + 끝 표식)
             foreach (var s in world.Squadrons)
             {

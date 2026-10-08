@@ -172,24 +172,42 @@ namespace Prototype.Strategy.Rules
 
         // ---- 전초기지 (기획서 5.5) ----
 
+        /// <summary>가장 가까운 아군 거점까지의 거리 (거점이 없으면 int.MaxValue).</summary>
+        public static int NearestOwnBaseDistance(World w, Hex h) =>
+            w.Bases.Where(b => b.Owner == World.Player).Select(b => Hex.Distance(b.Hex, h)).DefaultIfEmpty(int.MaxValue).Min();
+
+        /// <summary>전초기지 비용 = 기본 + 거리 × 거리당 비용.</summary>
+        public static int OutpostCost(World w, Balance bal, Hex h) =>
+            bal.OutpostCost + bal.OutpostCostPerDistance * NearestOwnBaseDistance(w, h);
+
+        /// <summary>
+        /// 전초기지 건설 조건: 적 영역이 아니고, 가장 가까운 아군 거점에서 OutpostMinDistance 이상,
+        /// 어떤 편대든 공중급유를 포함해 닿을 수 있는 칸. (기획서 5.5 "영역 가장자리" 규칙을 플레이테스트 후 개정)
+        /// </summary>
         public static string CanBuildOutpost(World w, Balance bal, Hex h)
         {
-            var b = w.BaseOf(h);
-            if (b == null || b.Owner != World.Player) return "아군 영역이 아님";
-            if (b.Hex == h) return "거점 본부 칸";
-            if (w.Facilities.ContainsKey(h)) return "시설이 있는 칸";
+            if (!w.Map.Contains(h)) return "맵 밖";
             if (w.Map[h].Terrain == TerrainType.Sea) return "해상";
-            var edge = h.Neighbors().Any(n => w.Map.Contains(n) && !OwnedByPlayer(w, n));
-            if (!edge) return "영역 가장자리가 아님";
-            if (w.Funds < bal.OutpostCost) return "자금 부족";
+            var owner = w.BaseOf(h);
+            if (owner != null && owner.Owner != World.Player) return "적 영역";
+            if (w.BaseAt(h) != null) return "거점 본부 칸";
+            if (w.Facilities.ContainsKey(h)) return "시설이 있는 칸";
+            if (w.EnemyUnitAt(h) != null) return "적 부대가 있는 칸";
+            var d = NearestOwnBaseDistance(w, h);
+            if (d < bal.OutpostMinDistance) return $"아군 거점에서 {bal.OutpostMinDistance}칸 이상 떨어져야 함 (현재 {d})";
+            if (!SquadronRules.ReachableByAir(w, bal, h)) return "어떤 편대도 닿지 못함 (공중급유 포함)";
+            if (w.Funds < OutpostCost(w, bal, h)) return "자금 부족";
             return null;
         }
 
-        /// <summary>가장자리 칸을 떼어 새 등급 1 거점의 본부로 삼는다.</summary>
+        public static IEnumerable<Hex> OutpostCandidates(World w, Balance bal) =>
+            w.Map.AllHexes().Where(h => CanBuildOutpost(w, bal, h) == null);
+
+        /// <summary>새 등급 1 거점의 본부로 삼는다. 아군 영역 안이면 그 칸을 떼어 온다.</summary>
         public static Base BuildOutpost(World w, Balance bal, Hex h)
         {
             if (CanBuildOutpost(w, bal, h) != null) return null;
-            w.Funds -= bal.OutpostCost;
+            w.Funds -= OutpostCost(w, bal, h);
             var b = new Base
             {
                 Id = w.Bases.Max(x => x.Id) + 1,

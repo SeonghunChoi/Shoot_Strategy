@@ -31,6 +31,8 @@ namespace Prototype.Strategy.Rules
         public int Air;
         public int Ground;
         public int Bombing;
+        /// <summary>기체 작전 반경 (헥스). 편대 반경은 편대 안 최솟값.</summary>
+        public int Range;
     }
 
     /// <summary>보유 기체 1기. 편대에 들어 있지 않으면 예비 (위치 없음).</summary>
@@ -55,6 +57,23 @@ namespace Prototype.Strategy.Rules
         /// <summary>피로 0~100.</summary>
         public int Fatigue;
         public int AircraftId; // 0이면 대기
+        public int Xp;
+        /// <summary>격추 후 복귀까지 남은 턴 (0이면 가용).</summary>
+        public int ReturnTurns;
+        /// <summary>포로 (몸값으로 복귀).</summary>
+        public bool Captured;
+    }
+
+    /// <summary>적 부대 (4단계: 고정 표적, 5단계: 이동·공격). 전력은 공중·지상 수치.</summary>
+    public sealed class EnemyUnit
+    {
+        public int Id;
+        public string Name;
+        public Hex Hex;
+        public int Air;
+        public int Ground;
+        public int Owner = 1;
+        public int Strength => Air + Ground;
     }
 
     /// <summary>편대 (기획서 6.1). 거점에 주둔하며 2~4기.</summary>
@@ -68,5 +87,7 @@ namespace Prototype.Strategy.Rules
         public readonly List<int> AircraftIds = new();
         /// <summary>이번 턴 출격 여부 (피로 회복 판정, 4단계부터 설정).</summary>
         public bool SortiedThisTurn;
+        /// <summary>이번 출격에 공중급유 (비용 추가, 작전 반경 배율). 출격 후 꺼진다.</summary>
+        public bool Refuel;
     }
 }

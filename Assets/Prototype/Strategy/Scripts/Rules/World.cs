@@ -10,6 +10,10 @@ namespace Prototype.Strategy.Rules
         public Hex Hex;       // 본부 칸 (시설 불가)
         public int Grade;
         public int Owner;     // 0 = 플레이어
+        /// <summary>적 거점 방어 전력 (거점 폭격의 대공 그룹).</summary>
+        public int AntiAir;
+        /// <summary>적 거점 시설 전력 (거점 폭격의 시설 그룹).</summary>
+        public int Structures;
     }
 
     public sealed class Facility
@@ -59,6 +63,16 @@ namespace Prototype.Strategy.Rules
         public readonly List<Pilot> Pilots = new();
         public readonly List<Squadron> Squadrons = new();
         public int NextId = 1;
+
+        public readonly List<EnemyUnit> EnemyUnits = new();
+        /// <summary>이번 턴 출격 계획 (순서대로 실행).</summary>
+        public readonly List<SortiePlan> SortiePlan = new();
+        /// <summary>가장 최근 출격 실행의 디브리핑.</summary>
+        public readonly List<SortieReport> Debriefs = new();
+        /// <summary>이번 턴에 실행한 출격의 목표 (겹침 보정용).</summary>
+        public readonly List<Hex> SortiedTargets = new();
+
+        public EnemyUnit EnemyUnitAt(Hex h) => EnemyUnits.FirstOrDefault(u => u.Hex == h);
 
         public Aircraft AircraftById(int id) => id == 0 ? null : Aircraft.FirstOrDefault(a => a.Id == id);
         public Pilot PilotById(int id) => id == 0 ? null : Pilots.FirstOrDefault(p => p.Id == id);

@@ -55,8 +55,22 @@ namespace Prototype.Strategy.Rules
             return null;
         }
 
-        public static int OperationRadius(World w, Balance bal, Base b) =>
-            bal.OperationRadius + (BaseRules.Has(w, b, FacilityType.Depot) ? bal.DepotRadiusBonus : 0);
+        /// <summary>기지 설비에 의한 작전 반경 증가 (보급창고).</summary>
+        public static int FacilityRadiusBonus(World w, Balance bal, Base b) =>
+            BaseRules.Has(w, b, FacilityType.Depot) ? bal.DepotRadiusBonus : 0;
+
+        /// <summary>편대 작전 반경 = (편대 안 기체 반경의 최솟값 + 설비 보너스), 공중급유면 × 배율. 기체가 없으면 0.</summary>
+        public static int OperationRadius(World w, Balance bal, Squadron s, bool? refuel = null)
+        {
+            if (s.AircraftIds.Count == 0) return 0;
+            var b = w.BaseById(s.BaseId);
+            var range = s.AircraftIds.Min(id => bal.Def(w.AircraftById(id).Type).Range) + FacilityRadiusBonus(w, bal, b);
+            return (refuel ?? s.Refuel) ? (int)(range * bal.RefuelRadiusMultiplier) : range;
+        }
+
+        /// <summary>어떤 편대든 (공중급유 포함) 닿을 수 있는 칸인지 — 전초기지 건설 조건.</summary>
+        public static bool ReachableByAir(World w, Balance bal, Hex h) =>
+            w.Squadrons.Any(s => Hex.Distance(w.BaseById(s.BaseId).Hex, h) <= OperationRadius(w, bal, s, refuel: true));
 
         // ---- 편대 편성 ----
 
@@ -101,6 +115,16 @@ namespace Prototype.Strategy.Rules
         {
             s.AircraftIds.Remove(a.Id);
             a.SquadronId = 0;
+        }
+
+        /// <summary>편대 안 기체 순서 변경 (기획서 11.3 편성 확인). 앞 기체가 먼저 전경에 선다.</summary>
+        public static void ReorderAircraft(Squadron s, Aircraft a, int delta)
+        {
+            var i = s.AircraftIds.IndexOf(a.Id);
+            var j = i + delta;
+            if (i < 0 || j < 0 || j >= s.AircraftIds.Count) return;
+            s.AircraftIds[i] = s.AircraftIds[j];
+            s.AircraftIds[j] = a.Id;
         }
 
         public static void AssignPilot(World w, Aircraft a, Pilot p)
@@ -187,7 +211,10 @@ namespace Prototype.Strategy.Rules
         {
             var p = w.PilotById(a.PilotId);
             if (p == null) return "파일럿 없음";
+            if (p.Captured) return "포로";
+            if (p.ReturnTurns > 0) return $"복귀 대기 {p.ReturnTurns}턴";
             if (IsExhausted(bal, p)) return "탈진";
+            if (a.Damage >= bal.SwapDamage) return $"손상 {a.Damage}%";
             return null;
         }
 
@@ -206,7 +233,23 @@ namespace Prototype.Strategy.Rules
         // ---- 턴 처리 ----
 
         /// <summary>주둔 파일럿 급여 (거점별). 예비·대기는 급여만 낸다.</summary>
-        public static int Salaries(World w, Balance bal) => w.Pilots.Sum(bal.Salary);
+        public static int Salaries(World w, Balance bal) =>
+            w.Pilots.Sum(p => p.Captured ? (int)(bal.Salary(p) * bal.CapturedSalaryRatio) : bal.Salary(p));
+
+        public static string CanRansom(World w, Balance bal, Pilot p)
+        {
+            if (!p.Captured) return "포로가 아님";
+            if (w.Funds < bal.RansomCost) return "자금 부족";
+            return null;
+        }
+
+        public static void Ransom(World w, Balance bal, Pilot p)
+        {
+            if (CanRansom(w, bal, p) != null) return;
+            w.Funds -= bal.RansomCost;
+            p.Captured = false;
+            p.ReturnTurns = 1;
+        }
 
         /// <summary>유흥가 환수 (주둔 파일럿 급여 × 등급 × 비율).</summary>
         public static int EntertainmentRefund(World w, Balance bal)
@@ -273,6 +316,11 @@ namespace Prototype.Strategy.Rules
             }
             // 대기 파일럿도 쉬는 중
             foreach (var p in w.IdlePilots) p.Fatigue = Math.Max(0, p.Fatigue - bal.FatigueRecovery);
+            // 격추 후 복귀 대기는 편대 소속 여부와 무관하게 줄어든다
+            foreach (var p in w.Pilots)
+                if (p.ReturnTurns > 0) p.ReturnTurns--;
+            w.SortiePlan.Clear();
+            w.SortiedTargets.Clear();
         }
     }
 }

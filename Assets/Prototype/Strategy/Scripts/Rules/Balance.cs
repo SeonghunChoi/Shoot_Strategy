@@ -80,8 +80,15 @@ namespace Prototype.Strategy.Rules
         // ---- 편대·기체·파일럿 (3단계) ----
         public int SquadronMaxSize = 4;
         public int SquadronsPerHangar = 2;
-        public int OperationRadius = 3;
+        /// <summary>기지 설비(보급창고)에 의한 작전 반경 증가.</summary>
         public int DepotRadiusBonus = 1;
+        /// <summary>공중급유: (기체 반경 + 설비 보너스) × 이 값.</summary>
+        public float RefuelRadiusMultiplier = 2f;
+        /// <summary>공중급유 비용 = 편대 출격 비용 × 이 값.</summary>
+        public float RefuelCostRatio = 1f;
+        /// <summary>전초기지는 가장 가까운 아군 거점에서 이 거리 이상.</summary>
+        public int OutpostMinDistance = 3;
+        public int OutpostCostPerDistance = 50;
         public int SalaryRegular = 40;
         public int SalaryNamed = 80;
         public int HirePilotCost = 200;
@@ -98,14 +105,38 @@ namespace Prototype.Strategy.Rules
         /// <summary>이 값 이상이면 탈진 (출격 불가).</summary>
         public int FatigueExhausted = 70;
 
+        // ---- 출격·자동 정산 (4단계) ----
+        /// <summary>기체 크기별 출격 비용 (연료·탄약). 인덱스 = 크기.</summary>
+        public int[] SortieCostBySize = { 0, 30, 50, 80 };
+        public float DepotSortieDiscount = 0.2f;
+        /// <summary>이 손상(%) 이상이면 다음 기체로 교대.</summary>
+        public int SwapDamage = 60;
+        public int MaxRounds = 12;
+        /// <summary>직접 플레이 대비 불리 계수 (아군 공격력에 곱함).</summary>
+        public float AutoResolvePenalty = 0.85f;
+        /// <summary>적 그룹이 전경 기체에 주는 라운드당 손상(%) = 남은 전력 × 이 값.</summary>
+        public float EnemyHitPerStrength = 1.0f;
+        public float OverlapAaReduction = 0.3f;
+        public int BountyUnit = 300;
+        public int BountyBase = 500;
+        public float CaptureChance = 0.5f;
+        public int RansomCost = 300;
+        /// <summary>포로 파일럿 급여 비율 (0~1). 0이면 포로는 급여 없음.</summary>
+        public float CapturedSalaryRatio = 0.5f;
+        public int SortieFatigue = 30;
+        public int XpPerRound = 10;
+        /// <summary>숙련도 상승에 필요한 경험치 = 현재 숙련도 × 이 값.</summary>
+        public int XpPerSkill = 100;
+        public int MaxReturnTurns = 3;
+
         public readonly Dictionary<AircraftType, AircraftDef> Aircraft = new();
 
         public Balance()
         {
-            AddAircraft(AircraftType.F5, "F-5", AircraftRole.Fighter, 1, 1, 400, 80, air: 8, ground: 3, bombing: 1);
-            AddAircraft(AircraftType.A4, "A-4", AircraftRole.Attacker, 1, 1, 450, 100, air: 4, ground: 8, bombing: 3);
-            AddAircraft(AircraftType.F4, "F-4", AircraftRole.Multirole, 2, 2, 900, 120, air: 7, ground: 6, bombing: 4);
-            AddAircraft(AircraftType.B57, "B-57", AircraftRole.Bomber, 3, 2, 1400, 160, air: 1, ground: 5, bombing: 10);
+            AddAircraft(AircraftType.F5, "F-5", AircraftRole.Fighter, 1, 1, 400, 80, air: 8, ground: 3, bombing: 1, range: 3);
+            AddAircraft(AircraftType.A4, "A-4", AircraftRole.Attacker, 1, 1, 450, 100, air: 4, ground: 8, bombing: 3, range: 3);
+            AddAircraft(AircraftType.F4, "F-4", AircraftRole.Multirole, 2, 2, 900, 120, air: 7, ground: 6, bombing: 4, range: 4);
+            AddAircraft(AircraftType.B57, "B-57", AircraftRole.Bomber, 3, 2, 1400, 160, air: 1, ground: 5, bombing: 10, range: 5);
 
             Add(FacilityType.Hangar, "격납고", "격", 150, 1, false, effect: "주둔 편대 2 (3단계)");
             Add(FacilityType.Runway, "활주로", "활", 100, 1, false, effect: "직선 연속 길이 = 운용 기체 크기");
@@ -133,12 +164,12 @@ namespace Prototype.Strategy.Rules
         }
 
         void AddAircraft(AircraftType type, string name, AircraftRole role, int size, int tier, int price, int hp,
-            int air, int ground, int bombing)
+            int air, int ground, int bombing, int range)
         {
             Aircraft[type] = new AircraftDef
             {
                 Type = type, Name = name, Role = role, Size = size, Tier = tier, Price = price, Hp = hp,
-                Air = air, Ground = ground, Bombing = bombing,
+                Air = air, Ground = ground, Bombing = bombing, Range = range,
             };
         }
 

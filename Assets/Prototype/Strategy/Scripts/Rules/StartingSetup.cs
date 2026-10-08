@@ -37,6 +37,17 @@ namespace Prototype.Strategy.Rules
             SquadronRules.AssignPilot(world, f5a, ace);
             SquadronRules.AssignPilot(world, a4, p2);
             SquadronRules.AssignPilot(world, f5b, p1);
+
+            // 적 (4단계: 고정 표적). 맵 가운데 동쪽의 전진 기지(해안 기지에서 거리 9, 전초기지 하나로 닿음) + 평지 부대 2개
+            var enemy = AddBase(world, "적 전진 기지", 11, 6, grade: 2);
+            enemy.Owner = 1;
+            enemy.AntiAir = 20;
+            enemy.Structures = 30;
+            foreach (var h in Hex.Range(enemy.Hex, 1)) world.Territory[h] = enemy.Id;
+            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "적 A부대", Hex = Hex.FromOffset(6, 3), Air = 15, Ground = 10 });
+            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "적 B부대", Hex = Hex.FromOffset(7, 8), Air = 8, Ground = 20 });
+            // 기지 서쪽 인접 칸의 경비대: 기지와 작전 지역이 겹쳐 출격 순서(S2)를 시험할 수 있다
+            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "적 경비대", Hex = Hex.FromOffset(10, 6), Air = 10, Ground = 12 });
         }
 
         static Base AddBase(World world, string name, int col, int row, int grade)
