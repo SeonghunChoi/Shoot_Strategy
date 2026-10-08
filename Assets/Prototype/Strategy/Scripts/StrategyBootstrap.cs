@@ -50,6 +50,9 @@ namespace Prototype.Strategy
         public bool OutpostMode { get; private set; }
         public IReadOnlyList<Hex> OutpostCandidates => _outpostCandidates;
         public bool ShowDebrief { get; set; }
+        /// <summary>적 턴 요약 창.</summary>
+        public bool ShowEnemyReport { get; set; }
+        public HashSet<Hex> Visible { get; private set; } = new();
         public int DebriefIndex { get; private set; }
         /// <summary>미실행 출격 계획이 있는 채로 턴 종료를 한 번 눌렀는지 (두 번째 누르면 취소하고 종료).</summary>
         public bool EndTurnWarned { get; private set; }
@@ -81,6 +84,7 @@ namespace Prototype.Strategy
         public void Restart()
         {
             World = World.Create(seed, Balance);
+            ShowEnemyReport = false;
             Selected = null;
             ClearModes();
             SelectedSquadronId = 0;
@@ -117,6 +121,7 @@ namespace Prototype.Strategy
             }
             ClearModes();
             Economy.EndTurn(World, Balance);
+            ShowEnemyReport = World.EnemyEvents.Count > 0 || World.Intercepts.Count > 0;
         }
 
         public void StartExpand(Base b)
@@ -164,12 +169,12 @@ namespace Prototype.Strategy
         {
             var dt = Time.unscaledDeltaTime;
             var mouse = _controls.Point.ReadValue<Vector2>();
-            var overUi = _hud.IsOverUi(mouse) || ShowDebrief;
+            var overUi = _hud.IsOverUi(mouse) || ShowDebrief || ShowEnemyReport;
             var typing = GUIUtility.keyboardControl != 0;
 
             if (_controls.DebugToggle.WasPressedThisFrame()) _hud.ToggleHelp();
             if (!typing && _controls.Restart.WasPressedThisFrame()) Restart();
-            if (!typing && _controls.EndTurn.WasPressedThisFrame() && !ShowDebrief) EndTurn();
+            if (!typing && _controls.EndTurn.WasPressedThisFrame() && !ShowDebrief && !ShowEnemyReport) EndTurn();
             if (!typing && _controls.TabPrev.WasPressedThisFrame()) ShiftTab(-1);
             if (!typing && _controls.TabNext.WasPressedThisFrame()) ShiftTab(1);
 
@@ -199,11 +204,12 @@ namespace Prototype.Strategy
             var mouseSelect = _controls.MouseSelect.WasPressedThisFrame() && !overUi;
             var padSelect = _controls.PadSelect.WasPressedThisFrame();
             if (padSelect && _hud.HasPadFocus) _hud.PadActivate();
-            else if ((mouseSelect || padSelect) && World.GameOver == null && !ShowDebrief) OnSelect(Cursor.Hover);
+            else if ((mouseSelect || padSelect) && World.GameOver == null && !ShowDebrief && !ShowEnemyReport) OnSelect(Cursor.Hover);
 
             if (_controls.Cancel.WasPressedThisFrame())
             {
-                if (ShowDebrief) ShowDebrief = false;
+                if (ShowEnemyReport) ShowEnemyReport = false;
+                else if (ShowDebrief) ShowDebrief = false;
                 else if (_hud.HasPadFocus) _hud.PadFocusClear();
                 else if (ExpandBase != null || MovingSquadron != null || TargetPickSquadron != null || OutpostMode) ClearModes();
                 else Selected = null;
@@ -214,7 +220,8 @@ namespace Prototype.Strategy
             if (TargetPickSquadron != null && !World.Squadrons.Contains(TargetPickSquadron)) TargetPickSquadron = null;
             if (EndTurnWarned && World.SortiePlan.Count == 0) EndTurnWarned = false;
 
-            _view.UpdateTerritory(World);
+            Visible = Vision.VisibleHexes(World, Balance);
+            _view.UpdateTerritory(World, Visible, Vision.StaleSightings(World, Balance));
             BuildHighlight(out var color);
             _view.UpdateMarkers(Cursor.Hover, Selected, _highlight, color);
         }

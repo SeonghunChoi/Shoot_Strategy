@@ -14,7 +14,7 @@ namespace Prototype.Strategy.Tests
         [SetUp]
         public void SetUp()
         {
-            _bal = new Balance();
+            _bal = new Balance { VisionEnabled = false }; // 출격 규칙만 시험 (시야는 EnemyTurnTests)
             _w = World.Create(1, _bal);
             _s1 = _w.Squadrons[0];
             _unitA = _w.EnemyUnits[0].Hex;
@@ -25,7 +25,7 @@ namespace Prototype.Strategy.Tests
         {
             // 해안 기지 (3,4) 반경 3: 적 A부대 (6,3)는 거리 4, B부대 (7,8)는 거리 6 → 반경 확장 전에는 없음
             Assert.IsEmpty(SortieRules.Targets(_w, _bal, _s1));
-            Assert.AreEqual((4, "적 A부대"), SortieRules.NearestTarget(_w, _s1));
+            Assert.AreEqual((4, "동부군 A부대"), SortieRules.NearestTarget(_w, _s1));
             Assert.AreEqual("작전 반경 밖", SortieRules.CanPlan(_w, _bal, _s1, _unitA));
             // 공중급유: 반경 3 × 2 = 6 → 닿음, 비용 두 배
             _s1.Refuel = true;
@@ -74,7 +74,7 @@ namespace Prototype.Strategy.Tests
 
         SortieReport Run(ulong seed)
         {
-            var bal = new Balance();
+            var bal = new Balance { VisionEnabled = false };
             foreach (var d in bal.Aircraft.Values) d.Range = 6;
             var w = World.Create(seed, bal);
             return SortieRules.Resolve(w, bal, w.Squadrons[0], w.EnemyUnits[0].Hex);

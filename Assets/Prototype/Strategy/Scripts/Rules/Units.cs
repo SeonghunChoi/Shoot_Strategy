@@ -73,6 +73,8 @@ namespace Prototype.Strategy.Rules
         public int Air;
         public int Ground;
         public int Owner = 1;
+        /// <summary>이번 턴 행동 목표 (표시용).</summary>
+        public Hex? Goal;
         public int Strength => Air + Ground;
     }
 
@@ -82,8 +84,8 @@ namespace Prototype.Strategy.Rules
         public int Id;
         public string Name;
         public int BaseId;
-        /// <summary>재배치 목적지 (0이면 없음). 턴 종료 시 도착.</summary>
-        public int MoveToBaseId;
+        /// <summary>이번 턴에 재배치함 (즉시 도착, 그 턴 출격 불가. 요격은 새 거점에서 가능).</summary>
+        public bool MovedThisTurn;
         public readonly List<int> AircraftIds = new();
         /// <summary>이번 턴 출격 여부 (피로 회복 판정, 4단계부터 설정).</summary>
         public bool SortiedThisTurn;

@@ -54,7 +54,10 @@ namespace Prototype.Strategy.Rules
             var lines = Forecast(w, bal);
             var net = Net(lines);
             w.Funds += net;
+            // 적 턴은 플레이어 출격·수지 뒤, 편대 회복(SquadronRules.EndTurn) 전에: 이번 턴 출격한 편대는 요격 불가
+            EnemyTurn.Run(w, bal);
             SquadronRules.EndTurn(w, bal);
+            Vision.UpdateSightings(w, bal);
             w.DeficitStreak = w.Funds < 0 ? w.DeficitStreak + 1 : 0;
 
             var report = new TurnReport
@@ -68,7 +71,7 @@ namespace Prototype.Strategy.Rules
             w.Reports.Add(report);
 
             if (w.DeficitStreak >= bal.BankruptTurns) w.GameOver = $"파산 — 자금 0 미만으로 {w.DeficitStreak}턴 연속";
-            else w.Turn++;
+            else if (w.GameOver == null) w.Turn++;
             return report;
         }
     }

@@ -101,7 +101,6 @@ namespace Prototype.Strategy.Rules
         {
             if (a.SquadronId != 0) return "다른 편대 소속";
             if (s.AircraftIds.Count >= bal.SquadronMaxSize) return "편대 정원";
-            if (s.MoveToBaseId != 0) return "이동 중";
             return CanOperate(w, bal, w.BaseById(s.BaseId), a.Type);
         }
 
@@ -142,13 +141,16 @@ namespace Prototype.Strategy.Rules
             a.PilotId = 0;
         }
 
-        // ---- 재배치 ----
+        // ---- 재배치 (즉시 도착: 플레이어 명령은 플레이어 턴 안에 완결되고, 적은 그 결과 위에서 행동한다) ----
 
         public static string CanMove(World w, Balance bal, Squadron s, Base to)
         {
             if (to.Owner != World.Player) return "아군 거점이 아님";
             if (to.Id == s.BaseId) return "이미 주둔 중";
-            if (w.SquadronsAt(to).Count() + w.Squadrons.Count(x => x.MoveToBaseId == to.Id) >= HangarCapacity(w, bal, to)) return "격납고 부족";
+            if (s.MovedThisTurn) return "이번 턴 이미 재배치함";
+            if (s.SortiedThisTurn) return "이번 턴 출격함";
+            if (w.SortiePlan.Any(p => p.SquadronId == s.Id)) return "출격 계획에 들어 있음";
+            if (w.SquadronsAt(to).Count() >= HangarCapacity(w, bal, to)) return "격납고 부족";
             foreach (var id in s.AircraftIds)
             {
                 var reason = CanOperate(w, bal, to, w.AircraftById(id).Type);
@@ -157,14 +159,18 @@ namespace Prototype.Strategy.Rules
             return null;
         }
 
-        /// <summary>다음 턴 종료 시 도착.</summary>
+        /// <summary>즉시 도착. 그 턴은 출격 불가(턴 소모), 파일럿 피로 소량 증가. 적 턴에는 새 거점에서 요격한다.</summary>
         public static void Move(World w, Balance bal, Squadron s, Base to)
         {
             if (CanMove(w, bal, s, to) != null) return;
-            s.MoveToBaseId = to.Id;
+            s.BaseId = to.Id;
+            s.MovedThisTurn = true;
+            foreach (var id in s.AircraftIds)
+            {
+                var p = w.PilotById(w.AircraftById(id).PilotId);
+                if (p != null) p.Fatigue = Math.Min(100, p.Fatigue + bal.RelocateFatigue);
+            }
         }
-
-        public static void CancelMove(Squadron s) => s.MoveToBaseId = 0;
 
         // ---- 상점 ----
 
@@ -206,7 +212,7 @@ namespace Prototype.Strategy.Rules
 
         public static bool IsExhausted(Balance bal, Pilot p) => p.Fatigue >= bal.FatigueExhausted;
 
-        /// <summary>출격 불가 사유 (4단계에서 사용). 파일럿 없음, 탈진, 이동 중.</summary>
+        /// <summary>출격 불가 사유 (4단계에서 사용). 파일럿 없음, 포로, 복귀 대기, 탈진, 손상.</summary>
         public static string CannotSortie(World w, Balance bal, Aircraft a)
         {
             var p = w.PilotById(a.PilotId);
@@ -308,11 +314,7 @@ namespace Prototype.Strategy.Rules
                         p.Fatigue = Math.Max(0, p.Fatigue - bal.FatigueRecovery - ent * bal.FatigueRecoveryPerEntertainmentGrade);
                 }
                 s.SortiedThisTurn = false;
-                if (s.MoveToBaseId != 0)
-                {
-                    s.BaseId = s.MoveToBaseId;
-                    s.MoveToBaseId = 0;
-                }
+                s.MovedThisTurn = false;
             }
             // 대기 파일럿도 쉬는 중
             foreach (var p in w.IdlePilots) p.Fatigue = Math.Max(0, p.Fatigue - bal.FatigueRecovery);

@@ -52,16 +52,21 @@ namespace Prototype.Strategy.Tests
         }
 
         [Test]
-        public void Move_ArrivesNextTurn()
+        public void Move_IsImmediateAndConsumesTurn()
         {
             var s = _w.Squadrons[1]; // 2편대: F-5 1기
+            var pilot = _w.PilotById(_w.AircraftById(s.AircraftIds[0]).PilotId);
             Assert.IsNull(SquadronRules.CanMove(_w, _bal, s, _south));
             SquadronRules.Move(_w, _bal, s, _south);
-            Assert.AreEqual(_south.Id, s.MoveToBaseId);
-            Assert.AreEqual(_coast.Id, s.BaseId);
-            Economy.EndTurn(_w, _bal);
             Assert.AreEqual(_south.Id, s.BaseId);
-            Assert.AreEqual(0, s.MoveToBaseId);
+            Assert.IsTrue(s.MovedThisTurn);
+            Assert.AreEqual(10, pilot.Fatigue);
+            Assert.AreEqual("이번 턴 재배치함", SortieRules.CanSortie(_w, _bal, s));
+            Assert.AreEqual("이번 턴 이미 재배치함", SquadronRules.CanMove(_w, _bal, s, _coast));
+            _bal.VisionEnabled = false;
+            Economy.EndTurn(_w, _bal);
+            Assert.IsFalse(s.MovedThisTurn);
+            Assert.AreEqual(_south.Id, s.BaseId);
         }
 
         [Test]

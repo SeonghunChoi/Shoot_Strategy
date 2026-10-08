@@ -129,6 +129,35 @@ namespace Prototype.Strategy.Rules
         public int XpPerSkill = 100;
         public int MaxReturnTurns = 3;
 
+        // ---- 적 세력·시야 (5단계) ----
+        public bool VisionEnabled = true;
+        /// <summary>아군 영역 밖으로 기본 시야 칸 수.</summary>
+        public int TerritoryVisionRange = 1;
+        /// <summary>레이더 등급 1당 시야 +칸 (영역 기준).</summary>
+        public int RadarRangePerGrade = 1;
+        public int SightingMemoryTurns = 5;
+        public int EnemyMovePoints = 2;
+        public int MountainMoveCost = 2;
+        /// <summary>적 세력이 아군 거점의 주둔 편대 수를 아는 범위 (부대·거점 기준).</summary>
+        public int EnemyDetectRadius = 3;
+        public float KnownAircraftDefenseWeight = 8f;
+        public int RegroupBelowStrength = 15;
+        public int DefensiveTurnsAfterLoss = 2;
+        public int AntiAirDefensePerGrade = 5;
+        public int SamDefensePerGrade = 10;
+        /// <summary>요격·대공 후 남은 적 전력이 이 값 이상이면 거점 상실.</summary>
+        public int CaptureThreshold = 10;
+        public int InterceptFatigue = 20;
+        /// <summary>재배치(이동 비행) 피로.</summary>
+        public int RelocateFatigue = 10;
+        public int CapturedBaseAntiAir = 5;
+        public int FactionCombatMaxDamage = 10;
+        public int ReinforceTurns = 6;
+        public int ReinforceAir = 10;
+        public int ReinforceGround = 12;
+        public int EnemyBaseRegen = 1;
+        public int EnemyUnitRegen = 2;
+
         public readonly Dictionary<AircraftType, AircraftDef> Aircraft = new();
 
         public Balance()
@@ -143,7 +172,7 @@ namespace Prototype.Strategy.Rules
             Add(FacilityType.Barracks, "병영", "병", 150, 1, true, effect: "지상군 고용 (6단계)");
             Add(FacilityType.AntiAir, "대공포", "대", 120, 1, true, effect: "거점 방어 (5단계)");
             Add(FacilityType.Maintenance, "정비소", "정", 250, 2, true, effect: "기체 수리·티어 (3단계)");
-            Add(FacilityType.Radar, "레이더", "레", 200, 2, true, effect: "탐지 반경 (5단계)");
+            Add(FacilityType.Radar, "레이더", "레", 200, 2, true, effect: "이 거점 시야 +등급칸 (기본: 영역 +1)");
             Add(FacilityType.Depot, "보급창고", "보", 150, 2, false, effect: "출격 비용 할인·작전 반경 (4단계)");
             Add(FacilityType.Entertainment, "유흥가", "유", 200, 2, true, effect: "급여 환수·피로 회복 (3단계)");
             Add(FacilityType.Refinery, "정유시설", "석", 300, 2, true, SiteRequirement.Oil, 80, "수입 +80 × 등급");

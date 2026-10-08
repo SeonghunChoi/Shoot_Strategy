@@ -78,9 +78,10 @@ namespace Prototype.Strategy.Rules
 
         public static bool AreasOverlap(Hex a, Hex b) => Hex.Distance(a, b) <= 2;
 
+        /// <summary>목표 종류. 적 부대는 지금 보이는 것만 (시야 켜짐 시), 적 거점은 항상.</summary>
         public static MissionType? MissionAt(World w, Hex h)
         {
-            if (w.EnemyUnitAt(h) != null) return MissionType.UnitAttack;
+            if (w.EnemyUnitAt(h) != null && (w.VisionBalance == null || Vision.IsVisible(w, w.VisionBalance, h))) return MissionType.UnitAttack;
             if (w.BaseAt(h) is { } b && b.Owner != World.Player) return MissionType.BaseBombing;
             return null;
         }
@@ -93,7 +94,7 @@ namespace Prototype.Strategy.Rules
 
         public static string CanSortie(World w, Balance bal, Squadron s)
         {
-            if (s.MoveToBaseId != 0) return "이동 중";
+            if (s.MovedThisTurn) return "이번 턴 재배치함";
             if (s.SortiedThisTurn) return "이번 턴 출격함";
             if (w.SortiePlan.Any(p => p.SquadronId == s.Id)) return "이미 계획됨";
             if (!SortieAircraft(w, bal, s).Any()) return "출격 가능한 기체 없음";
@@ -317,7 +318,7 @@ namespace Prototype.Strategy.Rules
                 unit.Air = groups[0].Strength;
                 unit.Ground = groups[1].Strength;
                 report.Effect = unit.Strength == 0 ? $"{unit.Name} 격멸" : $"{unit.Name} 전력 공중 {unit.Air} · 지상 {unit.Ground}로 감소";
-                if (unit.Strength == 0) w.EnemyUnits.Remove(unit);
+                if (unit.Strength == 0) EnemyTurn.RemoveUnit(w, unit);
                 report.Reward = (int)(bal.BountyUnit * report.DestructionRate);
             }
             else if (enemyBase != null)

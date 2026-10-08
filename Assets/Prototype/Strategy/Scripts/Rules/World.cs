@@ -47,6 +47,8 @@ namespace Prototype.Strategy.Rules
 
         public HexMap Map;
         public Rng Rng;
+        /// <summary>시야 판정용 Balance (World.Create가 넣음). 규칙 함수 시그니처를 늘리지 않기 위한 참조.</summary>
+        public Balance VisionBalance;
         public int Turn = 1;
         public int Funds;
         /// <summary>자금 0 미만으로 마친 연속 턴 수.</summary>
@@ -65,6 +67,14 @@ namespace Prototype.Strategy.Rules
         public int NextId = 1;
 
         public readonly List<EnemyUnit> EnemyUnits = new();
+        public readonly List<Faction> Factions = new();
+        /// <summary>적 부대 마지막 목격 (부대 Id → 기록).</summary>
+        public readonly Dictionary<int, Sighting> Sightings = new();
+        /// <summary>가장 최근 적 턴의 사건 요약.</summary>
+        public readonly List<string> EnemyEvents = new();
+        public readonly List<InterceptReport> Intercepts = new();
+
+        public Faction FactionById(int id) => Factions.FirstOrDefault(f => f.Id == id);
         /// <summary>이번 턴 출격 계획 (순서대로 실행).</summary>
         public readonly List<SortiePlan> SortiePlan = new();
         /// <summary>가장 최근 출격 실행의 디브리핑.</summary>
@@ -102,6 +112,7 @@ namespace Prototype.Strategy.Rules
                 Map = HexMap.Parse(MapLayouts.Zone1),
                 Rng = new Rng(seed),
                 Funds = balance.StartingFunds,
+                VisionBalance = balance,
             };
             StartingSetup.Apply(world);
             return world;

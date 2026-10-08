@@ -15,7 +15,6 @@ namespace Prototype.Strategy
         const float SideWidth = 400f;
         const float LogWidth = 380f;
         const float LogHeight = 150f;
-        const float HelpHeight = 240f;
 
         StrategyBootstrap _boot;
         bool _showHelp;
@@ -74,6 +73,7 @@ namespace Prototype.Strategy
             if (_showHelp) DrawHelp();
             DrawTopBar(); // 수지 내역 툴팁이 다른 패널 위에 오도록 마지막에
             if (_boot.ShowDebrief) DrawDebrief();
+            if (_boot.ShowEnemyReport) DrawEnemyReport();
             if (_boot.World.GameOver != null) DrawGameOver();
         }
 
@@ -215,9 +215,22 @@ namespace Prototype.Strategy
 
             foreach (var u in w.EnemyUnits)
             {
+                if (!_boot.Visible.Contains(u.Hex)) continue;
                 var c = HexLayout.ToWorld(u.Hex);
                 MapLabel(c + new Vector2(0f, 0.1f), u.Name, _mapLabelSmall, new Color(1f, 0.75f, 0.7f));
                 MapLabel(c + new Vector2(0f, -0.3f), $"공 {u.Air} 지 {u.Ground}", _mapLabelSmall, new Color(1f, 0.75f, 0.7f));
+            }
+            foreach (var g in Vision.StaleSightings(w, _boot.Balance))
+            {
+                var c = HexLayout.ToWorld(g.Hex);
+                MapLabel(c + new Vector2(0f, 0.1f), g.Name, _mapLabelSmall, HexMapView.GhostColor);
+                MapLabel(c + new Vector2(0f, -0.3f), $"{w.Turn - g.Turn}턴 전 목격", _mapLabelSmall, HexMapView.GhostColor);
+            }
+            foreach (var f in w.Factions)
+            {
+                var stance = EnemyTurn.StanceName(f.Stance);
+                foreach (var b in w.Bases.Where(x => x.Owner == f.Id))
+                    MapLabel(HexLayout.ToWorld(b.Hex) + new Vector2(0f, -0.95f), $"{f.Name} · {stance}", _mapLabelSmall, HexMapView.OwnerColor(f.Id));
             }
             foreach (var b in w.Bases.Where(x => x.Owner != World.Player))
                 MapLabel(HexLayout.ToWorld(b.Hex) + new Vector2(0f, -0.62f), $"대공 {b.AntiAir} 시설 {b.Structures}", _mapLabelSmall, new Color(1f, 0.75f, 0.7f));
@@ -480,8 +493,6 @@ namespace Prototype.Strategy
                     if (ns != null) _boot.SelectedSquadronId = ns.Id;
                 });
                 foreach (var s in w.SquadronsAt(selectedBase).ToList()) DrawSquadron(s);
-                foreach (var s in w.Squadrons.Where(x => x.MoveToBaseId == selectedBase.Id).ToList())
-                    GUILayout.Label($"{s.Name}  이동 중 → 다음 턴 도착", ProtoGui.Small);
             }
             else
             {
@@ -507,11 +518,8 @@ namespace Prototype.Strategy
             var rest = bal.FatigueRecovery + SquadronRules.EntertainmentGrade(w, b) * bal.FatigueRecoveryPerEntertainmentGrade;
             GUILayout.Label($"이 거점에서 턴마다 수리 {repair}%{(maint == 0 ? " (정비소 없음)" : "")} · 피로 −{rest}", ProtoGui.Small);
             GUILayout.Label($"작전 반경 {SquadronRules.OperationRadius(w, bal, s, refuel: false)} (가장 짧은 기체 기준 + 설비)  ·  공중급유 시 {SquadronRules.OperationRadius(w, bal, s, refuel: true)}", ProtoGui.Small);
-            if (s.MoveToBaseId != 0)
-            {
-                GUILayout.Label($"재배치 중 → {w.BaseById(s.MoveToBaseId).Name} (다음 턴 도착)", _green);
-                PanelButton("재배치 취소", () => SquadronRules.CancelMove(s));
-            }
+            if (s.MovedThisTurn) GUILayout.Label("이번 턴 재배치함 — 출격 불가, 적 턴에 이 거점에서 요격", _green);
+            else if (s.SortiedThisTurn) GUILayout.Label("이번 턴 출격함 — 재배치 불가, 적 턴 요격 불참", _red);
 
             foreach (var id in s.AircraftIds.ToList())
             {
@@ -551,7 +559,8 @@ namespace Prototype.Strategy
             var sq2 = s;
             PanelButton(selected ? "반경 숨기기" : "작전 반경 보기", () => _boot.SelectedSquadronId = selected ? 0 : sq2.Id);
             if (_boot.MovingSquadron == s) PanelButton("재배치 취소", _boot.StopMove);
-            else PanelButton("재배치…", () => _boot.StartMove(sq2), enabled: s.MoveToBaseId == 0 && s.AircraftIds.Count > 0);
+            else PanelButton("재배치… (즉시 도착, 이번 턴 출격 불가)", () => _boot.StartMove(sq2),
+                enabled: !s.MovedThisTurn && !s.SortiedThisTurn && s.AircraftIds.Count > 0 && w.SortiePlan.All(p => p.SquadronId != s.Id));
             GUILayout.EndHorizontal();
             if (_boot.MovingSquadron == s) GUILayout.Label("초록 거점을 클릭 / 패드 South (East로 취소)", _wrap);
 
@@ -638,6 +647,8 @@ namespace Prototype.Strategy
 
             GUILayout.Space(8);
             if (w.Debriefs.Count > 0) PanelButton($"최근 디브리핑 다시 보기 ({w.Debriefs.Count}건)", () => _boot.OpenDebrief(0));
+            if (w.EnemyEvents.Count > 0 || w.Intercepts.Count > 0) PanelButton("최근 적 턴 요약 다시 보기", () => _boot.ShowEnemyReport = true);
+            PanelButton(bal.VisionEnabled ? "디버그: 시야 끄기 (적 전부 표시)" : "디버그: 시야 켜기", () => bal.VisionEnabled = !bal.VisionEnabled);
             GUILayout.Label($"기체 크기별 비용 소형 30 · 중형 50 · 대형 80, 보급창고 −20%. 공중급유 = 반경 × {bal.RefuelRadiusMultiplier:0.#}, 비용 +{bal.RefuelCostRatio:P0}. 교대 기준 손상 {bal.SwapDamage}%, 불리 계수 {bal.AutoResolvePenalty}", _wrap);
         }
 
@@ -702,6 +713,41 @@ namespace Prototype.Strategy
             GUI.enabled = true;
             if (GUILayout.Button("닫기 (Esc / East)")) Do(() => _boot.ShowDebrief = false);
             GUILayout.EndHorizontal();
+            GUILayout.EndArea();
+        }
+
+        // ---- 적 턴 요약 ----
+
+        Vector2 _enemyScroll;
+
+        void DrawEnemyReport()
+        {
+            var w = _boot.World;
+            var width = Mathf.Min(640f, Screen.width - 40f);
+            var height = Mathf.Min(520f, Screen.height - 80f);
+            var r = Panel(new Rect((Screen.width - SideWidth - width) * 0.5f, (Screen.height - height) * 0.5f, width, height));
+            GUILayout.BeginArea(new Rect(r.x + 16f, r.y + 12f, r.width - 32f, r.height - 24f));
+            GUILayout.Label($"적 턴 요약  ·  턴 {w.Turn - 1} → {w.Turn}", ProtoGui.Bold);
+            foreach (var f in w.Factions)
+                GUILayout.Label($"{f.Name}: 태세 {EnemyTurn.StanceName(f.Stance)} · 부대 {w.EnemyUnits.Count(u => u.Owner == f.Id)} · 전력 {EnemyTurn.FactionStrength(w, f)}", ProtoGui.Small);
+
+            _enemyScroll = GUILayout.BeginScrollView(_enemyScroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar);
+            GUILayout.Space(4);
+            GUILayout.Label("사건", ProtoGui.Bold);
+            if (w.EnemyEvents.Count == 0) GUILayout.Label("탐지된 사건 없음", ProtoGui.Small);
+            foreach (var e in w.EnemyEvents) GUILayout.Label(e, e.Contains("상실") ? _red : _wrap);
+
+            foreach (var rep in w.Intercepts)
+            {
+                GUILayout.Space(6);
+                GUILayout.Label($"{rep.BaseName} 피습 — {rep.UnitName} (전력 {rep.EnemyBefore})", rep.Captured ? _red : ProtoGui.Bold);
+                GUILayout.Label($"요격 편대 {rep.SquadronsEngaged}개 · {rep.Rounds}라운드 → 적 {rep.EnemyAfterAir}  ·  대공 시설 {rep.FacilityDefense} → 적 {rep.EnemyAfterFacility}  ·  {(rep.Captured ? "거점 상실" : "방어 성공")}", ProtoGui.Small);
+                foreach (var l in rep.Log) GUILayout.Label(l, _wrap);
+            }
+            GUILayout.EndScrollView();
+
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("닫기 (Esc / East)")) Do(() => _boot.ShowEnemyReport = false);
             GUILayout.EndArea();
         }
 
@@ -793,20 +839,35 @@ namespace Prototype.Strategy
             GUILayout.EndArea();
         }
 
+        static readonly string[] HelpLines =
+        {
+            "선택: 왼쪽 클릭 / 패드 South    취소: 오른쪽 클릭 · Esc / East",
+            "맵 이동: WASD · 방향키 · 가운데 드래그 / 오른쪽 스틱",
+            "확대·축소: 휠 / RT · LT    패드 커서: 왼쪽 스틱",
+            "턴 종료: Enter / Start    다시 시작: R",
+            "아군 영역 칸을 고르면 거점 패널: 확장·등급·시설 건설",
+            "패드 패널 조작: 방향키 위·아래로 초점, South 실행, East 해제",
+            "탭 전환: Q / E · LB / RB    (거점 · 격납고 · 출격 · 상점 · 명부)",
+            "출격 탭: 편대 선택 → 맵에서 목표 클릭 → 출격 실행 → 디브리핑",
+            "어두운 칸 = 시야 밖. 회색 = 마지막 목격. 턴 종료 후 적 턴 요약",
+            "예상 수지에 마우스를 올리면 항목별 내역",
+            "디버그: 출격 탭 맨 아래 '시야 끄기', 격납고 탭 '손상 50·피로 80'",
+        };
+
+        Vector2 _helpScroll;
+
         void DrawHelp()
         {
-            var r = Panel(new Rect(8f, Screen.height - LogHeight - HelpHeight - 16f, LogWidth, HelpHeight));
+            // 줄 수에 맞춰 높이를 정하고, 화면이 낮으면 스크롤
+            const float lineHeight = 22f;
+            var wanted = 16f + 26f + HelpLines.Length * lineHeight + 8f;
+            var height = Mathf.Min(wanted, Screen.height - LogHeight - BarHeight - 32f);
+            var r = Panel(new Rect(8f, Screen.height - LogHeight - height - 16f, LogWidth, height));
             GUILayout.BeginArea(new Rect(r.x + 10f, r.y + 8f, r.width - 20f, r.height - 16f));
             GUILayout.Label("조작  (F1 / View로 닫기)", ProtoGui.Bold);
-            GUILayout.Label("선택: 왼쪽 클릭 / 패드 South    취소: 오른쪽 클릭 · Esc / East", ProtoGui.Small);
-            GUILayout.Label("맵 이동: WASD · 방향키 · 가운데 드래그 / 오른쪽 스틱", ProtoGui.Small);
-            GUILayout.Label("확대·축소: 휠 / RT · LT    패드 커서: 왼쪽 스틱", ProtoGui.Small);
-            GUILayout.Label("턴 종료: Enter / Start    다시 시작: R", ProtoGui.Small);
-            GUILayout.Label("아군 영역 칸을 고르면 거점 패널: 확장·등급·시설 건설", ProtoGui.Small);
-            GUILayout.Label("패드 패널 조작: 방향키 위·아래로 초점, South 실행, East 해제", ProtoGui.Small);
-            GUILayout.Label("탭 전환: Q / E · LB / RB    (거점 · 격납고 · 출격 · 상점 · 명부)", ProtoGui.Small);
-            GUILayout.Label("출격 탭: 편대 선택 → 맵에서 목표 클릭 → 출격 실행 → 디브리핑", ProtoGui.Small);
-            GUILayout.Label("예상 수지에 마우스를 올리면 항목별 내역", ProtoGui.Small);
+            _helpScroll = GUILayout.BeginScrollView(_helpScroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar);
+            foreach (var line in HelpLines) GUILayout.Label(line, _wrap);
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
         }
 

@@ -38,16 +38,27 @@ namespace Prototype.Strategy.Rules
             SquadronRules.AssignPilot(world, a4, p2);
             SquadronRules.AssignPilot(world, f5b, p1);
 
-            // 적 (4단계: 고정 표적). 맵 가운데 동쪽의 전진 기지(해안 기지에서 거리 9, 전초기지 하나로 닿음) + 평지 부대 2개
-            var enemy = AddBase(world, "적 전진 기지", 11, 6, grade: 2);
-            enemy.Owner = 1;
-            enemy.AntiAir = 20;
-            enemy.Structures = 30;
-            foreach (var h in Hex.Range(enemy.Hex, 1)) world.Territory[h] = enemy.Id;
-            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "적 A부대", Hex = Hex.FromOffset(6, 3), Air = 15, Ground = 10 });
-            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "적 B부대", Hex = Hex.FromOffset(7, 8), Air = 8, Ground = 20 });
+            // 적 세력 1 동부군: 맵 가운데 동쪽의 전진 기지(해안 기지에서 거리 9) + 부대 3개
+            world.Factions.Add(new Faction { Id = 1, Name = "동부군" });
+            var east = AddBase(world, "동부군 전진 기지", 11, 6, grade: 2);
+            east.Owner = 1;
+            east.AntiAir = 20;
+            east.Structures = 30;
+            foreach (var h in Hex.Range(east.Hex, 1)) world.Territory[h] = east.Id;
+            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "동부군 A부대", Hex = Hex.FromOffset(6, 3), Air = 15, Ground = 10, Owner = 1 });
+            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "동부군 B부대", Hex = Hex.FromOffset(8, 10), Air = 8, Ground = 20, Owner = 1 });
             // 기지 서쪽 인접 칸의 경비대: 기지와 작전 지역이 겹쳐 출격 순서(S2)를 시험할 수 있다
-            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "적 경비대", Hex = Hex.FromOffset(10, 6), Air = 10, Ground = 12 });
+            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "동부군 경비대", Hex = Hex.FromOffset(10, 6), Air = 10, Ground = 12, Owner = 1 });
+
+            // 적 세력 2 북부군: 북동 산악 너머 기지 + 부대 2개. 동부군과도 적대
+            world.Factions.Add(new Faction { Id = 2, Name = "북부군" });
+            var north = AddBase(world, "북부군 기지", 12, 1, grade: 2);
+            north.Owner = 2;
+            north.AntiAir = 15;
+            north.Structures = 25;
+            foreach (var h in Hex.Range(north.Hex, 1)) if (world.Map.Contains(h)) world.Territory[h] = north.Id;
+            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "북부군 1부대", Hex = Hex.FromOffset(11, 3), Air = 12, Ground = 12, Owner = 2 });
+            world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "북부군 2부대", Hex = Hex.FromOffset(13, 3), Air = 6, Ground = 16, Owner = 2 });
         }
 
         static Base AddBase(World world, string name, int col, int row, int grade)

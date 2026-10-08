@@ -57,10 +57,18 @@ namespace Prototype.Strategy
         public static readonly Color EnemyColor = new(0.9f, 0.3f, 0.25f);
         public static readonly Color PlanColor = new(1f, 0.6f, 0.15f);
 
-        public static Color OwnerColor(int owner) => owner == World.Player ? PlayerColor : EnemyColor;
+        public static readonly Color Faction2Color = new(0.75f, 0.4f, 0.95f);
+        public static readonly Color GhostColor = new(0.6f, 0.6f, 0.6f, 0.8f);
 
-        /// <summary>영역 색·경계, 거점 본부, 활주로 선.</summary>
-        public void UpdateTerritory(World world)
+        public static Color OwnerColor(int owner) => owner switch
+        {
+            World.Player => PlayerColor,
+            2 => Faction2Color,
+            _ => EnemyColor,
+        };
+
+        /// <summary>영역 색·경계, 거점 본부, 활주로 선, 적 부대(보이는 것만)와 마지막 목격 유령.</summary>
+        public void UpdateTerritory(World world, HashSet<Hex> visible, IEnumerable<Sighting> ghosts)
         {
             _territory.Clear();
             foreach (var (h, baseId) in world.Territory)
@@ -99,11 +107,30 @@ namespace Prototype.Strategy
                         _territory.AddSegment(c, HexLayout.ToWorld(n), 0.3f, RunwayColor);
                 }
             }
-            // 적 부대: 빨간 마름모 (작은 헥스 + 테두리)
+            // 시야 밖은 어둡게
+            foreach (var h in _map.AllHexes())
+                if (!visible.Contains(h)) _territory.AddFilled(h, CellScale, new Color(0f, 0f, 0f, 0.35f));
+
+            // 적 부대 (보이는 것만): 세력 색 작은 헥스 + 테두리, 이번 턴 목표 방향 선
             foreach (var u in world.EnemyUnits)
             {
-                _territory.AddFilled(u.Hex, 0.55f, new Color(0.35f, 0.08f, 0.06f, 0.95f));
-                _territory.AddOutline(u.Hex, 0.55f, 0.45f, EnemyColor);
+                if (!visible.Contains(u.Hex)) continue;
+                var color = OwnerColor(u.Owner);
+                _territory.AddFilled(u.Hex, 0.55f, new Color(color.r * 0.4f, color.g * 0.3f, color.b * 0.3f, 0.95f));
+                _territory.AddOutline(u.Hex, 0.55f, 0.45f, color);
+                if (u.Goal is { } goal && goal != u.Hex)
+                {
+                    var from = HexLayout.ToWorld(u.Hex);
+                    var dir = (HexLayout.ToWorld(goal) - from).normalized;
+                    _territory.AddSegment(from + dir * 0.55f, from + dir * 1.1f, 0.1f, new Color(color.r, color.g, color.b, 0.8f));
+                }
+            }
+
+            // 마지막 목격 유령 (회색)
+            foreach (var g in ghosts)
+            {
+                _territory.AddFilled(g.Hex, 0.5f, new Color(0.2f, 0.2f, 0.2f, 0.7f));
+                _territory.AddOutline(g.Hex, 0.5f, 0.42f, GhostColor);
             }
 
             // 출격 계획: 작전 지역(목표 + 인접 6칸) 바깥 경계를 주황 테두리로, 목표 칸은 진하게
@@ -120,17 +147,6 @@ namespace Prototype.Strategy
                 _territory.AddOutline(plan.Target, 0.9f, 0.78f, PlanColor);
             }
 
-            // 재배치 중인 편대: 출발 거점 → 목적지 화살표 (띠 + 끝 표식)
-            foreach (var s in world.Squadrons)
-            {
-                if (s.MoveToBaseId == 0) continue;
-                var from = HexLayout.ToWorld(world.BaseById(s.BaseId).Hex);
-                var to = HexLayout.ToWorld(world.BaseById(s.MoveToBaseId).Hex);
-                var color = new Color(1f, 0.85f, 0.2f, 0.9f);
-                _territory.AddSegment(from, to, 0.12f, color);
-                var tip = to + (from - to).normalized * 0.7f;
-                _territory.AddSegment(tip, to + (from - to).normalized * 0.45f, 0.3f, color);
-            }
             _territory.Apply();
         }
 
