@@ -10,6 +10,7 @@ namespace Prototype.Strategy
         Base,
         Hangar,
         Sortie,
+        Ground,
         Shop,
         Pilots,
     }
@@ -26,6 +27,7 @@ namespace Prototype.Strategy
         static readonly Color MoveColor = new(0.4f, 1f, 0.5f, 0.4f);
         static readonly Color TargetColor = new(1f, 0.6f, 0.15f, 0.45f);
         static readonly Color OutpostColor = new(0.9f, 0.9f, 0.5f, 0.4f);
+        static readonly Color GroundColor = new(0.45f, 0.9f, 0.35f, 0.45f);
 
         [SerializeField] ulong seed = 20260930;
 
@@ -52,6 +54,10 @@ namespace Prototype.Strategy
         public bool ShowDebrief { get; set; }
         /// <summary>적 턴 요약 창.</summary>
         public bool ShowEnemyReport { get; set; }
+        /// <summary>상부 통신 창.</summary>
+        public bool ShowHq { get; set; }
+        /// <summary>출동 목표를 고르는 중인 지상군 (null이면 아님).</summary>
+        public GroundUnit GroundPick { get; private set; }
         public HashSet<Hex> Visible { get; private set; } = new();
         public int DebriefIndex { get; private set; }
         /// <summary>미실행 출격 계획이 있는 채로 턴 종료를 한 번 눌렀는지 (두 번째 누르면 취소하고 종료).</summary>
@@ -85,6 +91,7 @@ namespace Prototype.Strategy
         {
             World = World.Create(seed, Balance);
             ShowEnemyReport = false;
+            ShowHq = false;
             Selected = null;
             ClearModes();
             SelectedSquadronId = 0;
@@ -97,6 +104,7 @@ namespace Prototype.Strategy
             MovingSquadron = null;
             TargetPickSquadron = null;
             OutpostMode = false;
+            GroundPick = null;
             EndTurnWarned = false;
         }
 
@@ -108,6 +116,15 @@ namespace Prototype.Strategy
         }
 
         public void StopOutpost() => OutpostMode = false;
+
+        public void StartGroundPick(GroundUnit g)
+        {
+            ClearModes();
+            GroundPick = g;
+            Tab = PanelTab.Ground;
+        }
+
+        public void StopGroundPick() => GroundPick = null;
 
         /// <summary>턴 종료. 미실행 출격 계획이 있으면 한 번은 경고만 하고, 다시 누르면 계획을 버리고 종료한다.</summary>
         public void EndTurn()
@@ -211,13 +228,15 @@ namespace Prototype.Strategy
                 if (ShowEnemyReport) ShowEnemyReport = false;
                 else if (ShowDebrief) ShowDebrief = false;
                 else if (_hud.HasPadFocus) _hud.PadFocusClear();
-                else if (ExpandBase != null || MovingSquadron != null || TargetPickSquadron != null || OutpostMode) ClearModes();
+                else if (ShowHq) ShowHq = false;
+                else if (ExpandBase != null || MovingSquadron != null || TargetPickSquadron != null || OutpostMode || GroundPick != null) ClearModes();
                 else Selected = null;
             }
 
             if (World.SquadronById(SelectedSquadronId) == null) SelectedSquadronId = 0;
             if (MovingSquadron != null && !World.Squadrons.Contains(MovingSquadron)) MovingSquadron = null;
             if (TargetPickSquadron != null && !World.Squadrons.Contains(TargetPickSquadron)) TargetPickSquadron = null;
+            if (GroundPick != null && !World.GroundUnits.Contains(GroundPick)) GroundPick = null;
             if (EndTurnWarned && World.SortiePlan.Count == 0) EndTurnWarned = false;
 
             Visible = Vision.VisibleHexes(World, Balance);
@@ -230,6 +249,14 @@ namespace Prototype.Strategy
         void BuildHighlight(out Color color)
         {
             _highlight.Clear();
+            if (GroundPick != null)
+            {
+                // 출동 목표 후보: 적 거점(점령)과 아군 거점(주둔). 그 밖의 육지 칸도 클릭하면 그 자리로 이동
+                color = GroundColor;
+                foreach (var b in World.Bases)
+                    if (GroundRules.CanDeploy(World, Balance, GroundPick, b.Hex) == null) _highlight.Add(b.Hex);
+                return;
+            }
             if (OutpostMode)
             {
                 color = OutpostColor;
@@ -274,6 +301,13 @@ namespace Prototype.Strategy
 
         void OnSelect(Hex? hover)
         {
+            if (GroundPick != null)
+            {
+                // 지상군 출동 모드: 갈 수 있는 칸을 누르면 출동(또는 목표 변경), 그 밖을 누르면 모드 종료
+                if (hover is { } h && GroundRules.CanDeploy(World, Balance, GroundPick, h) == null) GroundRules.Deploy(World, Balance, GroundPick, h);
+                GroundPick = null;
+                return;
+            }
             if (OutpostMode)
             {
                 // 전초기지 모드: 후보 칸을 누르면 건설하고 그 거점을 선택, 그 밖을 누르면 모드 종료

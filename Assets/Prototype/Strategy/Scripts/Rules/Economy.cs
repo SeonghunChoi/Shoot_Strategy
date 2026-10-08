@@ -9,7 +9,7 @@ namespace Prototype.Strategy.Rules
         /// <summary>이번 턴을 지금 마치면 적용될 수입·지출 항목.</summary>
         public static List<BudgetLine> Forecast(World w, Balance bal)
         {
-            var lines = new List<BudgetLine> { new() { Label = "상부 예산", Amount = bal.HqBudget } };
+            var lines = new List<BudgetLine> { new() { Label = $"상부 예산 (신뢰도 {w.Trust})", Amount = HqRules.Budget(w, bal) } };
 
             var refinery = 0;
             var mine = 0;
@@ -37,6 +37,7 @@ namespace Prototype.Strategy.Rules
             var hexes = w.OwnedHexes(World.Player).Count();
             lines.Add(new BudgetLine { Label = $"영역 유지비 ({hexes}칸)", Amount = -bal.UpkeepPerHex * hexes });
             lines.Add(new BudgetLine { Label = $"파일럿 급여 ({w.Pilots.Count}명)", Amount = -SquadronRules.Salaries(w, bal) });
+            if (w.GroundUnits.Count > 0) lines.Add(new BudgetLine { Label = $"지상군 유지비 ({w.GroundUnits.Count}개)", Amount = -GroundRules.Upkeep(w, bal) });
             var (repaired, repairCost) = SquadronRules.RepairForecast(w, bal);
             if (repairCost > 0) lines.Add(new BudgetLine { Label = $"기체 수리 ({repaired}%)", Amount = -repairCost });
             return lines;
@@ -54,10 +55,13 @@ namespace Prototype.Strategy.Rules
             var lines = Forecast(w, bal);
             var net = Net(lines);
             w.Funds += net;
-            // 적 턴은 플레이어 출격·수지 뒤, 편대 회복(SquadronRules.EndTurn) 전에: 이번 턴 출격한 편대는 요격 불가
-            EnemyTurn.Run(w, bal);
+            w.EnemyEvents.Clear();
+            // 턴 순서: 아군 지상군 이동 → 적 턴 → 편대 회복. 이번 턴 출격한 편대는 요격 불가
+            GroundRules.MovePhase(w, bal);
+            if (w.GameOver == null) EnemyTurn.Run(w, bal);
             SquadronRules.EndTurn(w, bal);
             Vision.UpdateSightings(w, bal);
+            HqRules.EndTurn(w, bal);
             w.DeficitStreak = w.Funds < 0 ? w.DeficitStreak + 1 : 0;
 
             var report = new TurnReport

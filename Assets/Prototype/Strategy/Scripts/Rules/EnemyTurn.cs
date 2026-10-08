@@ -64,7 +64,6 @@ namespace Prototype.Strategy.Rules
 
         public static void Run(World w, Balance bal)
         {
-            w.EnemyEvents.Clear();
             w.Intercepts.Clear();
             foreach (var f in w.Factions)
             {
@@ -73,6 +72,7 @@ namespace Prototype.Strategy.Rules
                     ActUnit(w, bal, f, u);
             }
             FactionCombat(w, bal);
+            GroundCombat(w, bal);
             Reinforce(w, bal);
             if (w.Bases.All(b => b.Owner != World.Player)) w.GameOver = "모든 거점 상실";
         }
@@ -101,6 +101,14 @@ namespace Prototype.Strategy.Rules
 
         static void ActUnit(World w, Balance bal, Faction f, EnemyUnit u)
         {
+            // 인접한 아군 지상군(출동 중)이 있으면 이동하지 않고 교전
+            var engaged = w.GroundUnits.FirstOrDefault(g => g.Deployed && Hex.Distance(g.Hex, u.Hex) <= 1);
+            if (engaged != null)
+            {
+                EngageGround(w, bal, u, engaged);
+                return;
+            }
+
             var home = BasesOf(w, f).OrderBy(b => Hex.Distance(b.Hex, u.Hex)).FirstOrDefault();
             Hex? goal = null;
             switch (f.Stance)
@@ -228,10 +236,14 @@ namespace Prototype.Strategy.Rules
             rep.Rounds = round;
             rep.EnemyAfterAir = air + ground;
 
-            // 2) 대공 시설: 남은 전력에서 방어력만큼 더 깎는다 (공중부터)
-            var remaining = Math.Max(0, air + ground - rep.FacilityDefense);
+            // 2) 대공 시설 + 주둔 지상군: 남은 전력에서 방어력만큼 더 깎는다 (공중부터)
+            var groundDefense = GroundRules.StationedStrength(w, target);
+            var remaining = Math.Max(0, air + ground - rep.FacilityDefense - groundDefense);
             rep.EnemyAfterFacility = remaining;
-            if (rep.FacilityDefense > 0) rep.Log.Add($"대공 시설 방어력 {rep.FacilityDefense} → 적 전력 {air + ground} → {remaining}");
+            if (rep.FacilityDefense > 0) rep.Log.Add($"대공 시설 방어력 {rep.FacilityDefense}");
+            if (groundDefense > 0) rep.Log.Add($"주둔 지상군 방어력 {groundDefense}");
+            if (rep.FacilityDefense + groundDefense > 0) rep.Log.Add($"→ 적 전력 {air + ground} → {remaining}");
+            w.Stats.BasesAttacked++;
             var scale = air + ground > 0 ? (float)remaining / (air + ground) : 0f;
             u.Air = (int)Math.Round(air * scale);
             u.Ground = remaining - u.Air;
@@ -242,6 +254,7 @@ namespace Prototype.Strategy.Rules
                 rep.Captured = true;
                 rep.Log.Add($"남은 전력 {remaining} ≥ {bal.CaptureThreshold} — 거점 상실");
                 Capture(w, bal, f, u, target, rep);
+                HqRules.AddTrust(w, bal, -bal.TrustBaseLost, $"{target.Name} 상실");
             }
             else
             {
@@ -261,6 +274,12 @@ namespace Prototype.Strategy.Rules
         /// <summary>거점 상실 (기획서 5.6): 등급 −1, 상한 초과 시설 파괴, 주둔 편대 강제 이탈(자리 없으면 기체 손실), 영역은 거점과 함께.</summary>
         public static void Capture(World w, Balance bal, Faction f, EnemyUnit u, Base target, InterceptReport rep)
         {
+            w.Stats.BasesLost++;
+            foreach (var g in GroundRules.StationedAt(w, target).ToList())
+            {
+                w.GroundUnits.Remove(g);
+                rep.Log.Add($"   주둔 {g.Name} 괴멸");
+            }
             target.Owner = f.Id;
             target.Grade = Math.Max(1, target.Grade - 1);
             var cap = BaseRules.FacilityCap(bal, target);
@@ -303,6 +322,34 @@ namespace Prototype.Strategy.Rules
             target.Structures = BaseRules.FacilityCount(w, target) * 10 + 10;
             u.Hex = target.Hex;
             u.Goal = null;
+        }
+
+        // ---- 출동 중 아군 지상군 피습 ----
+
+        static void GroundCombat(World w, Balance bal)
+        {
+            foreach (var g in w.GroundUnits.Where(x => x.Deployed).ToList())
+            {
+                foreach (var u in w.EnemyUnits.Where(x => Hex.Distance(x.Hex, g.Hex) <= 1 && !x.EngagedThisTurn).ToList())
+                {
+                    if (!w.GroundUnits.Contains(g)) break;
+                    EngageGround(w, bal, u, g);
+                }
+            }
+            foreach (var u in w.EnemyUnits) u.EngagedThisTurn = false;
+        }
+
+        /// <summary>적 부대 ↔ 출동 중 아군 지상군 수치 교전 (세력 간 교전과 같은 방식).</summary>
+        static void EngageGround(World w, Balance bal, EnemyUnit u, GroundUnit g)
+        {
+            var dealt = Math.Min(bal.FactionCombatMaxDamage, g.Strength / 2);
+            var taken = Math.Min(bal.FactionCombatMaxDamage, u.Strength / 2);
+            Damage(u, dealt);
+            g.Strength = Math.Max(0, g.Strength - taken);
+            u.EngagedThisTurn = true;
+            w.EnemyEvents.Add($"{u.Name}이(가) 이동 중인 {g.Name} 공격: 아군 −{taken}, 적 −{dealt}");
+            if (u.Strength == 0) RemoveUnit(w, u);
+            if (g.Strength == 0) GroundRules.Destroy(w, g, "괴멸");
         }
 
         // ---- 세력 간 교전 ----

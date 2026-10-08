@@ -352,6 +352,7 @@ namespace Prototype.Strategy.Rules
             }
             s.SortiedThisTurn = true;
             s.Refuel = false; // 급유는 출격 1회분
+            w.Stats.Sorties++;
             return report;
         }
 

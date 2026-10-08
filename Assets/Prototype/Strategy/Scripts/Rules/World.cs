@@ -75,6 +75,16 @@ namespace Prototype.Strategy.Rules
         public readonly List<InterceptReport> Intercepts = new();
 
         public Faction FactionById(int id) => Factions.FirstOrDefault(f => f.Id == id);
+
+        public readonly List<GroundUnit> GroundUnits = new();
+        public int Trust;
+        public readonly List<string> TrustLog = new();
+        public Directive Directive;
+        public int DirectiveTimer;
+        /// <summary>장기 목표 거점 (점령하면 승리).</summary>
+        public int GoalBaseId;
+        public bool Victory;
+        public readonly GameStats Stats = new();
         /// <summary>이번 턴 출격 계획 (순서대로 실행).</summary>
         public readonly List<SortiePlan> SortiePlan = new();
         /// <summary>가장 최근 출격 실행의 디브리핑.</summary>
@@ -112,6 +122,7 @@ namespace Prototype.Strategy.Rules
                 Map = HexMap.Parse(MapLayouts.Zone1),
                 Rng = new Rng(seed),
                 Funds = balance.StartingFunds,
+                Trust = balance.StartingTrust,
                 VisionBalance = balance,
             };
             StartingSetup.Apply(world);

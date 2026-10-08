@@ -45,6 +45,7 @@ namespace Prototype.Strategy.Rules
             east.AntiAir = 20;
             east.Structures = 30;
             foreach (var h in Hex.Range(east.Hex, 1)) world.Territory[h] = east.Id;
+            world.GoalBaseId = east.Id; // 상부 장기 목표: 동부군 전진 기지 점령 (승리 조건)
             world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "동부군 A부대", Hex = Hex.FromOffset(6, 3), Air = 15, Ground = 10, Owner = 1 });
             world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "동부군 B부대", Hex = Hex.FromOffset(8, 10), Air = 8, Ground = 20, Owner = 1 });
             // 기지 서쪽 인접 칸의 경비대: 기지와 작전 지역이 겹쳐 출격 순서(S2)를 시험할 수 있다

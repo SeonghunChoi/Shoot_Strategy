@@ -158,6 +158,30 @@ namespace Prototype.Strategy.Rules
         public int EnemyBaseRegen = 1;
         public int EnemyUnitRegen = 2;
 
+        // ---- 지상군·상부 (6단계) ----
+        public int GroundHireCost = 200;
+        public int GroundBaseStrength = 15;
+        public int GroundStrengthPerBarracksGrade = 5;
+        public int GroundUpkeep = 30;
+        public int GroundDeployCost = 50;
+        public int GroundMovePoints = 2;
+        public int GroundVisionRange = 1;
+        /// <summary>지상군(주둔·출동)에서 이 거리 안이면 전초기지 건설 가능 (공중 도달과 별개).</summary>
+        public int GroundOutpostReach = 2;
+        public int StartingTrust = 50;
+        /// <summary>상부 예산 = HqBudget × (이 값 + 신뢰도/100).</summary>
+        public float BudgetBaseRatio = 0.5f;
+        public int TrustGoal = 30;
+        public int TrustCapture = 10;
+        public int TrustOutpost = 5;
+        public int TrustDirectiveSuccess = 10;
+        public int TrustDirectiveFail = 15;
+        public int TrustRefuse = 10;
+        public int TrustBaseLost = 10;
+        public int DirectiveInterval = 5;
+        public int DirectiveDeadline = 4;
+        public int DirectiveExpandHexes = 4;
+
         public readonly Dictionary<AircraftType, AircraftDef> Aircraft = new();
 
         public Balance()

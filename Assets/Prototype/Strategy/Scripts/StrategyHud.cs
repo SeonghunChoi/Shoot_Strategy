@@ -74,6 +74,7 @@ namespace Prototype.Strategy
             DrawTopBar(); // 수지 내역 툴팁이 다른 패널 위에 오도록 마지막에
             if (_boot.ShowDebrief) DrawDebrief();
             if (_boot.ShowEnemyReport) DrawEnemyReport();
+            if (_boot.ShowHq) DrawHq();
             if (_boot.World.GameOver != null) DrawGameOver();
         }
 
@@ -154,7 +155,8 @@ namespace Prototype.Strategy
             GUILayout.Label($"예상 수지  {net:+#,0;-#,0;0}", net < 0 ? _red : _green, GUILayout.Width(150));
             var budgetRect = GUILayoutUtility.GetLastRect();
             GUILayout.Label($"연속 적자  {w.DeficitStreak}/{bal.BankruptTurns}", w.DeficitStreak > 0 ? _red : GUI.skin.label, GUILayout.Width(120));
-            GUILayout.Label("신뢰도  —", GUILayout.Width(100));
+            if (GUILayout.Button($"신뢰도 {w.Trust}{(w.Directive != null ? " · 지시!" : "")}", GUILayout.Width(130)))
+                Do(() => _boot.ShowHq = !_boot.ShowHq);
             GUILayout.Label($"턴  {w.Turn}", ProtoGui.Bold, GUILayout.Width(70));
             GUI.enabled = w.GameOver == null;
             if (GUILayout.Button("턴 종료 (Enter)", GUILayout.Width(130))) Do(_boot.EndTurn);
@@ -210,7 +212,10 @@ namespace Prototype.Strategy
                 MapLabel(c, b.Grade.ToString(), _mapLabel, Color.white);
                 MapLabel(c + new Vector2(0f, 0.72f), b.Name, _mapLabelSmall, Color.white);
                 var squadrons = w.SquadronsAt(b).Count();
-                if (squadrons > 0) MapLabel(c + new Vector2(0f, -0.62f), $"편대 {squadrons}", _mapLabelSmall, new Color(0.7f, 0.9f, 1f));
+                var ground = GroundRules.StationedAt(w, b).Count();
+                var garrison = (squadrons > 0 ? $"편대 {squadrons}" : "") + (squadrons > 0 && ground > 0 ? " · " : "") + (ground > 0 ? $"지상 {ground}" : "");
+                if (garrison != "") MapLabel(c + new Vector2(0f, -0.62f), garrison, _mapLabelSmall, new Color(0.7f, 0.9f, 1f));
+                if (b.Id == w.GoalBaseId && b.Owner != World.Player) MapLabel(c + new Vector2(0f, 1.05f), "★ 장기 목표", _mapLabelSmall, new Color(1f, 0.9f, 0.4f));
             }
 
             foreach (var u in w.EnemyUnits)
@@ -220,6 +225,8 @@ namespace Prototype.Strategy
                 MapLabel(c + new Vector2(0f, 0.1f), u.Name, _mapLabelSmall, new Color(1f, 0.75f, 0.7f));
                 MapLabel(c + new Vector2(0f, -0.3f), $"공 {u.Air} 지 {u.Ground}", _mapLabelSmall, new Color(1f, 0.75f, 0.7f));
             }
+            foreach (var gu in w.GroundUnits.Where(x => x.Deployed))
+                MapLabel(HexLayout.ToWorld(gu.Hex) + new Vector2(0f, -0.35f), $"{gu.Name} {gu.Strength}", _mapLabelSmall, HexMapView.GroundColor);
             foreach (var g in Vision.StaleSightings(w, _boot.Balance))
             {
                 var c = HexLayout.ToWorld(g.Hex);
@@ -294,6 +301,7 @@ namespace Prototype.Strategy
             {
                 case PanelTab.Hangar: DrawHangarTab(); break;
                 case PanelTab.Sortie: DrawSortieTab(); break;
+                case PanelTab.Ground: DrawGroundTab(); break;
                 case PanelTab.Shop: DrawShopTab(); break;
                 case PanelTab.Pilots: DrawPilotsTab(); break;
                 default:
@@ -465,7 +473,7 @@ namespace Prototype.Strategy
 
         // ---- 탭 ----
 
-        static readonly string[] TabNames = { "거점", "격납고", "출격", "상점", "명부" };
+        static readonly string[] TabNames = { "거점", "격납고", "출격", "지상군", "상점", "명부" };
 
         void DrawTabs()
         {
@@ -716,6 +724,95 @@ namespace Prototype.Strategy
             GUILayout.EndArea();
         }
 
+        // ---- 지상군 ----
+
+        void DrawGroundTab()
+        {
+            var w = _boot.World;
+            var bal = _boot.Balance;
+
+            if (_boot.GroundPick is { } picking)
+            {
+                GUILayout.Label($"{picking.Name}: 목표 칸을 클릭 / 패드 South", ProtoGui.Bold);
+                GUILayout.Label("녹색 = 거점(적 거점은 점령, 아군 거점은 주둔). 그 밖의 육지 칸도 이동 목표로 지정 가능. 오른쪽 클릭·Esc·East로 취소", _wrap);
+                PanelButton("목표 선택 취소", _boot.StopGroundPick);
+                GUILayout.Space(8);
+            }
+
+            GUILayout.Label($"지상군 {w.GroundUnits.Count}개  ·  유지비 {GroundRules.Upkeep(w, bal)}/턴", ProtoGui.Bold);
+            GUILayout.Label($"고용 {bal.GroundHireCost} (병영 필요, 전력 {bal.GroundBaseStrength} + 병영 등급 × {bal.GroundStrengthPerBarracksGrade}), 출동 {bal.GroundDeployCost}, 이동 {bal.GroundMovePoints}칸/턴", _wrap);
+            GUILayout.Label("점령: 적 거점 인접에서 전력 > 대공 + 시설. 폭격으로 시설을 깎아 두면 쉬워짐. 거점의 적 부대와 먼저 교전", _wrap);
+
+            foreach (var b in w.Bases.Where(x => x.Owner == World.Player))
+            {
+                GUILayout.Space(6);
+                var barracks = GroundRules.BarracksGrade(w, b);
+                GUILayout.Label($"{b.Name}  ·  병영 {(barracks > 0 ? $"{barracks}등급" : "없음")}  ·  주둔 지상군 방어 {GroundRules.StationedStrength(w, b)}", ProtoGui.Bold);
+                var bb = b;
+                ActionButton($"지상군 고용  {bal.GroundHireCost}", GroundRules.CanHire(w, bal, b), () => GroundRules.Hire(w, bal, bb));
+            }
+
+            GUILayout.Space(8);
+            GUILayout.Label("부대", ProtoGui.Bold);
+            if (w.GroundUnits.Count == 0) GUILayout.Label("지상군 없음", ProtoGui.Small);
+            foreach (var g in w.GroundUnits.ToList())
+            {
+                var gu = g;
+                var where = g.Deployed
+                    ? $"출동 중 {g.Hex.ToOffset()} → {(g.Target is { } t ? (w.BaseAt(t)?.Name ?? t.ToOffset().ToString()) : "대기")}"
+                    : $"{w.BaseById(g.BaseId).Name} 주둔";
+                GUILayout.Label($"{g.Name}  전력 {g.Strength}  ·  {where}", g.Deployed ? _green : ProtoGui.Small);
+                GUILayout.BeginHorizontal();
+                PanelButton(g.Deployed ? "목표 변경…" : $"출동…  ({bal.GroundDeployCost})", () => _boot.StartGroundPick(gu),
+                    enabled: g.Deployed || w.Funds >= bal.GroundDeployCost);
+                if (g.Deployed) PanelButton("가까운 거점으로 복귀", () => GroundRules.Recall(w, gu));
+                GUILayout.EndHorizontal();
+            }
+            GUILayout.Space(6);
+            GUILayout.Label("턴 순서: 턴 종료 → 아군 지상군 이동·공격 → 적 턴. 출동 중 적 부대와 맞닿으면 교전", _wrap);
+        }
+
+        // ---- 상부 통신 ----
+
+        Vector2 _hqScroll;
+
+        void DrawHq()
+        {
+            var w = _boot.World;
+            var bal = _boot.Balance;
+            var width = 460f;
+            var height = Mathf.Min(420f, Screen.height - BarHeight - 40f);
+            var r = Panel(new Rect(Mathf.Max(8f, Screen.width * 0.5f - width), BarHeight + 6f, width, height));
+            GUILayout.BeginArea(new Rect(r.x + 14f, r.y + 10f, r.width - 28f, r.height - 20f));
+            GUILayout.Label($"상부 통신  ·  신뢰도 {w.Trust}/100", ProtoGui.Bold);
+            GUILayout.Label($"예산 {HqRules.Budget(w, bal)}/턴 = {bal.HqBudget} × ({bal.BudgetBaseRatio} + 신뢰도/100). 신뢰도 0이면 해임", _wrap);
+            GUILayout.Space(4);
+            GUILayout.Label($"장기 목표: {HqRules.GoalText(w)}  (달성 시 +{bal.TrustGoal}, 승리)", _green);
+
+            GUILayout.Space(6);
+            GUILayout.Label("긴급 지시", ProtoGui.Bold);
+            if (w.Directive is { } d)
+            {
+                var left = d.Deadline - w.Turn;
+                GUILayout.Label($"{d.Text}  ·  남은 턴 {left}", left <= 1 ? _red : GUI.skin.label);
+                GUILayout.Label($"완수 +{bal.TrustDirectiveSuccess} · 실패 −{bal.TrustDirectiveFail} · 거부 −{bal.TrustRefuse}", ProtoGui.Small);
+                if (GUILayout.Button($"지시 거부 (−{bal.TrustRefuse})")) Do(() => HqRules.Refuse(w, bal));
+            }
+            else
+            {
+                GUILayout.Label($"없음 — {bal.DirectiveInterval - w.DirectiveTimer}턴 뒤 새 지시", ProtoGui.Small);
+            }
+
+            GUILayout.Space(6);
+            GUILayout.Label("신뢰도 변동", ProtoGui.Bold);
+            _hqScroll = GUILayout.BeginScrollView(_hqScroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar);
+            if (w.TrustLog.Count == 0) GUILayout.Label("아직 없음", ProtoGui.Small);
+            for (var i = w.TrustLog.Count - 1; i >= 0; i--) GUILayout.Label(w.TrustLog[i], _wrap);
+            GUILayout.EndScrollView();
+            if (GUILayout.Button("닫기 (Esc / East)")) Do(() => _boot.ShowHq = false);
+            GUILayout.EndArea();
+        }
+
         // ---- 적 턴 요약 ----
 
         Vector2 _enemyScroll;
@@ -847,10 +944,12 @@ namespace Prototype.Strategy
             "턴 종료: Enter / Start    다시 시작: R",
             "아군 영역 칸을 고르면 거점 패널: 확장·등급·시설 건설",
             "패드 패널 조작: 방향키 위·아래로 초점, South 실행, East 해제",
-            "탭 전환: Q / E · LB / RB    (거점 · 격납고 · 출격 · 상점 · 명부)",
+            "탭 전환: Q / E · LB / RB    (거점 · 격납고 · 출격 · 지상군 · 상점 · 명부)",
             "출격 탭: 편대 선택 → 맵에서 목표 클릭 → 출격 실행 → 디브리핑",
             "어두운 칸 = 시야 밖. 회색 = 마지막 목격. 턴 종료 후 적 턴 요약",
             "예상 수지에 마우스를 올리면 항목별 내역",
+            "지상군 탭: 병영에서 고용 → 출동(목표 클릭) → 적 거점 인접에서 점령",
+            "상단 바 '신뢰도'를 누르면 상부 통신: 장기 목표·긴급 지시·거부",
             "디버그: 출격 탭 맨 아래 '시야 끄기', 격납고 탭 '손상 50·피로 80'",
         };
 
@@ -873,11 +972,16 @@ namespace Prototype.Strategy
 
         void DrawGameOver()
         {
-            var r = Panel(new Rect(Screen.width * 0.5f - 180f, Screen.height * 0.5f - 70f, 360f, 140f));
+            var w = _boot.World;
+            var st = w.Stats;
+            var r = Panel(new Rect(Screen.width * 0.5f - 200f, Screen.height * 0.5f - 130f, 400f, 260f));
             GUILayout.BeginArea(new Rect(r.x + 16f, r.y + 12f, r.width - 32f, r.height - 24f));
-            GUILayout.Label("게임 오버", ProtoGui.Bold);
-            GUILayout.Label(_boot.World.GameOver, _wrap);
-            GUILayout.Label($"턴 {_boot.World.Turn}에서 종료", ProtoGui.Small);
+            GUILayout.Label(w.Victory ? "승리" : "게임 오버", w.Victory ? _green : ProtoGui.Bold);
+            GUILayout.Label(w.GameOver, _wrap);
+            GUILayout.Label($"턴 {w.Turn}  ·  자금 {w.Funds:N0}  ·  신뢰도 {w.Trust}", ProtoGui.Small);
+            GUILayout.Label($"출격 {st.Sorties}회  ·  피습 {st.BasesAttacked}회  ·  거점 상실 {st.BasesLost}  ·  점령 {st.BasesCaptured}", ProtoGui.Small);
+            GUILayout.Label($"지시 완수 {st.DirectivesDone} · 실패 {st.DirectivesFailed} · 거부 {st.DirectivesRefused}", ProtoGui.Small);
+            GUILayout.FlexibleSpace();
             if (GUILayout.Button("다시 시작 (R)")) Do(_boot.Restart);
             GUILayout.EndArea();
         }

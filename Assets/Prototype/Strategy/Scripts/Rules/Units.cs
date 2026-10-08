@@ -75,6 +75,8 @@ namespace Prototype.Strategy.Rules
         public int Owner = 1;
         /// <summary>이번 턴 행동 목표 (표시용).</summary>
         public Hex? Goal;
+        /// <summary>이번 적 턴에 지상군과 교전함 (중복 교전 방지).</summary>
+        public bool EngagedThisTurn;
         public int Strength => Air + Ground;
     }
 

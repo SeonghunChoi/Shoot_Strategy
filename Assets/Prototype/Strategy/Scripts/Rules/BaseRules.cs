@@ -195,7 +195,8 @@ namespace Prototype.Strategy.Rules
             if (w.EnemyUnitAt(h) != null) return "적 부대가 있는 칸";
             var d = NearestOwnBaseDistance(w, h);
             if (d < bal.OutpostMinDistance) return $"아군 거점에서 {bal.OutpostMinDistance}칸 이상 떨어져야 함 (현재 {d})";
-            if (!SquadronRules.ReachableByAir(w, bal, h)) return "어떤 편대도 닿지 못함 (공중급유 포함)";
+            if (!SquadronRules.ReachableByAir(w, bal, h) && !w.GroundUnits.Any(g => Hex.Distance(g.Hex, h) <= bal.GroundOutpostReach))
+                return "어떤 편대(급유 포함)·지상군도 닿지 못함";
             if (w.Funds < OutpostCost(w, bal, h)) return "자금 부족";
             return null;
         }
@@ -218,6 +219,7 @@ namespace Prototype.Strategy.Rules
             };
             w.Bases.Add(b);
             w.Territory[h] = b.Id;
+            HqRules.AddTrust(w, bal, bal.TrustOutpost, $"{b.Name} 건설");
             return b;
         }
 

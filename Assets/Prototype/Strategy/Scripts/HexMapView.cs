@@ -59,6 +59,7 @@ namespace Prototype.Strategy
 
         public static readonly Color Faction2Color = new(0.75f, 0.4f, 0.95f);
         public static readonly Color GhostColor = new(0.6f, 0.6f, 0.6f, 0.8f);
+        public static readonly Color GroundColor = new(0.45f, 0.95f, 0.35f);
 
         public static Color OwnerColor(int owner) => owner switch
         {
@@ -145,6 +146,16 @@ namespace Prototype.Strategy
                         if (!area.Contains(h.Neighbor(dir))) _territory.AddEdge(h, dir, 0.1f, PlanColor);
                 }
                 _territory.AddOutline(plan.Target, 0.9f, 0.78f, PlanColor);
+            }
+
+            // 출동 중 아군 지상군: 녹색 작은 헥스 + 목표 방향 선
+            foreach (var g in world.GroundUnits)
+            {
+                if (!g.Deployed) continue;
+                _territory.AddFilled(g.Hex, 0.45f, new Color(0.12f, 0.3f, 0.1f, 0.95f));
+                _territory.AddOutline(g.Hex, 0.45f, 0.35f, GroundColor);
+                if (g.Target is { } t && t != g.Hex)
+                    _territory.AddSegment(HexLayout.ToWorld(g.Hex), HexLayout.ToWorld(t), 0.08f, new Color(GroundColor.r, GroundColor.g, GroundColor.b, 0.6f));
             }
 
             _territory.Apply();
