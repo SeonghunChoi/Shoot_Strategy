@@ -26,15 +26,24 @@ namespace Prototype.Strategy
         }
 
         /// <summary>반투명 어두운 패널 배경.</summary>
-        public static void Panel(Rect r)
+        public static void Panel(Rect r, bool opaque = false)
         {
             if (_panel == null)
             {
-                _panel = new Texture2D(1, 1);
-                _panel.SetPixel(0, 0, new Color(0.08f, 0.1f, 0.13f, 0.82f));
-                _panel.Apply();
+                _panel = Solid(new Color(0.08f, 0.1f, 0.13f, 0.82f));
+                _opaquePanel = Solid(new Color(0.1f, 0.12f, 0.16f, 0.97f));
             }
-            GUI.DrawTexture(r, _panel);
+            GUI.DrawTexture(r, opaque ? _opaquePanel : _panel);
+        }
+
+        static Texture2D _opaquePanel;
+
+        static Texture2D Solid(Color c)
+        {
+            var t = new Texture2D(1, 1);
+            t.SetPixel(0, 0, c);
+            t.Apply();
+            return t;
         }
 
         /// <summary>색 견본 + 이름.</summary>

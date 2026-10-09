@@ -138,3 +138,37 @@ namespace Prototype.Strategy.Tests
         }
     }
 }
+
+namespace Prototype.Strategy.Tests
+{
+    public class HireTests
+    {
+        [Test]
+        public void Candidates_HireChosenOneAndRefresh()
+        {
+            var bal = new Balance();
+            var w = World.Create(3, bal);
+            Assert.AreEqual(3, w.HireCandidates.Count);
+            Assert.IsTrue(w.HireCandidates.All(c => c.Skill >= 1 && c.Skill <= 3 && c.Id == 0));
+
+            var pick = w.HireCandidates.OrderByDescending(c => c.Skill).First();
+            var cost = SquadronRules.HireCost(bal, pick);
+            Assert.AreEqual(bal.HirePilotCost + (pick.Skill - 1) * bal.HireCostPerSkill, cost);
+            var funds = w.Funds;
+            var hired = SquadronRules.Hire(w, bal, pick);
+            Assert.AreSame(pick, hired);
+            Assert.AreNotEqual(0, hired.Id);
+            Assert.Contains(hired, w.Pilots);
+            Assert.AreEqual(2, w.HireCandidates.Count);
+            Assert.AreEqual(funds - cost, w.Funds);
+            Assert.AreEqual("후보가 아님", SquadronRules.CanHire(w, bal, hired));
+
+            // 교체 주기 2턴: 2턴째를 마치면 새 후보 3명
+            bal.VisionEnabled = false;
+            Economy.EndTurn(w, bal);
+            Assert.AreEqual(2, w.HireCandidates.Count);
+            Economy.EndTurn(w, bal);
+            Assert.AreEqual(3, w.HireCandidates.Count);
+        }
+    }
+}

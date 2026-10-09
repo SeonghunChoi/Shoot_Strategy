@@ -26,12 +26,17 @@ namespace Prototype.Strategy.Rules
         public AircraftRole Role;
         public int Size;  // 1 소형, 2 중형, 3 대형 (활주로 길이)
         public int Tier;  // 1~4 (정비소 등급)
+        [Tune("기체", "가격", 0f, 3000f)]
         public int Price;
         public int Hp;
+        [Tune("기체", "공중", 0f, 20f)]
         public int Air;
+        [Tune("기체", "지상", 0f, 20f)]
         public int Ground;
+        [Tune("기체", "폭격", 0f, 20f)]
         public int Bombing;
         /// <summary>기체 작전 반경 (헥스). 편대 반경은 편대 안 최솟값.</summary>
+        [Tune("기체", "작전 반경", 1f, 8f)]
         public int Range;
     }
 

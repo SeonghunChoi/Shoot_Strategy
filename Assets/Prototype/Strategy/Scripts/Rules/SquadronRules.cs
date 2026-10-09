@@ -165,6 +165,7 @@ namespace Prototype.Strategy.Rules
             if (CanMove(w, bal, s, to) != null) return;
             s.BaseId = to.Id;
             s.MovedThisTurn = true;
+            w.Log("재배치", $"{s.Name} → {to.Name}");
             foreach (var id in s.AircraftIds)
             {
                 var p = w.PilotById(w.AircraftById(id).PilotId);
@@ -197,16 +198,51 @@ namespace Prototype.Strategy.Rules
             w.Aircraft.Remove(a);
         }
 
-        public static string CanHire(World w, Balance bal) => w.Funds < bal.HirePilotCost ? "자금 부족" : null;
-
-        public static Pilot Hire(World w, Balance bal)
+        static readonly string[] Surnames = { "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임", "한", "오", "서", "신", "권" };
+        static readonly string[] GivenNames =
         {
-            if (CanHire(w, bal) != null) return null;
-            w.Funds -= bal.HirePilotCost;
-            var n = w.Pilots.Count(p => !p.Named) + 1;
+            "민수", "지훈", "현우", "서준", "도윤", "예준", "시우", "하준", "주원", "지호",
+            "준서", "건우", "우진", "선우", "유준", "연우", "정민", "태윤", "승현", "재원",
+        };
+
+        /// <summary>고용비 = 기본 + (숙련 − 1) × 숙련당 추가.</summary>
+        public static int HireCost(Balance bal, Pilot candidate) => bal.HirePilotCost + (candidate.Skill - 1) * bal.HireCostPerSkill;
+
+        /// <summary>고용 후보를 새로 뽑는다 (숙련 1: 50%, 2: 35%, 3: 15%, 숙련 기종 무작위).</summary>
+        public static void RefreshCandidates(World w, Balance bal)
+        {
+            w.HireCandidates.Clear();
             var types = (AircraftType[])Enum.GetValues(typeof(AircraftType));
-            return AddPilot(w, $"파일럿 {n}", named: false, skill: 1 + w.Rng.Next(2), types[w.Rng.Next(types.Length)]);
+            for (var i = 0; i < bal.HireCandidateCount; i++)
+            {
+                var roll = w.Rng.NextDouble();
+                var skill = roll < 0.5 ? 1 : roll < 0.85 ? 2 : 3;
+                string name;
+                do name = Surnames[w.Rng.Next(Surnames.Length)] + GivenNames[w.Rng.Next(GivenNames.Length)];
+                while (w.Pilots.Any(p => p.Name == name) || w.HireCandidates.Any(p => p.Name == name));
+                w.HireCandidates.Add(new Pilot { Name = name, Skill = skill, Aptitude = types[w.Rng.Next(types.Length)] });
+            }
         }
+
+        public static string CanHire(World w, Balance bal, Pilot candidate)
+        {
+            if (!w.HireCandidates.Contains(candidate)) return "후보가 아님";
+            if (w.Funds < HireCost(bal, candidate)) return "자금 부족";
+            return null;
+        }
+
+        public static Pilot Hire(World w, Balance bal, Pilot candidate)
+        {
+            if (CanHire(w, bal, candidate) != null) return null;
+            w.Funds -= HireCost(bal, candidate);
+            w.HireCandidates.Remove(candidate);
+            candidate.Id = w.NextId++;
+            w.Pilots.Add(candidate);
+            return candidate;
+        }
+
+        /// <summary>다음 후보 교체까지 남은 턴.</summary>
+        public static int TurnsUntilRefresh(World w, Balance bal) => bal.HireRefreshTurns - (w.Turn - 1) % Math.Max(1, bal.HireRefreshTurns);
 
         // ---- 상태 ----
 
@@ -318,6 +354,8 @@ namespace Prototype.Strategy.Rules
             }
             // 대기 파일럿도 쉬는 중
             foreach (var p in w.IdlePilots) p.Fatigue = Math.Max(0, p.Fatigue - bal.FatigueRecovery);
+            // 고용 후보 교체 (턴 종료 시점의 턴 번호 기준)
+            if (w.Turn % Math.Max(1, bal.HireRefreshTurns) == 0) RefreshCandidates(w, bal);
             // 격추 후 복귀 대기는 편대 소속 여부와 무관하게 줄어든다
             foreach (var p in w.Pilots)
                 if (p.ReturnTurns > 0) p.ReturnTurns--;

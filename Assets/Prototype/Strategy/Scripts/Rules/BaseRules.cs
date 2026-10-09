@@ -107,18 +107,25 @@ namespace Prototype.Strategy.Rules
             var b = w.BaseOf(h);
             var def = bal.Def(type);
             if (b.Grade < def.UnlockGrade) return $"거점 {def.UnlockGrade}등급 필요";
-            if (FacilityCount(w, b) >= FacilityCap(bal, b)) return "시설 상한";
+            if (bal.HardFacilityCap && FacilityCount(w, b) >= FacilityCap(bal, b)) return "시설 상한";
             var cell = w.Map[h];
             if (def.Site == SiteRequirement.Oil && !cell.Oil) return "유전 칸 필요";
             if (def.Site == SiteRequirement.Mountain && cell.Terrain != TerrainType.Mountain) return "산악 칸 필요";
-            if (w.Funds < def.Cost) return "자금 부족";
+            if (w.Funds < BuildCost(w, bal, b, type)) return "자금 부족";
             return null;
         }
+
+        /// <summary>이 거점에 다음으로 지을 시설이 상한을 몇 번째로 넘는지 (0이면 상한 안).</summary>
+        public static int NextOverCap(World w, Balance bal, Base b) => Math.Max(0, FacilityCount(w, b) + 1 - FacilityCap(bal, b));
+
+        /// <summary>건설비 = 기본 × (1 + 할증 비율 × 상한 초과 순번). 상한 안이면 기본 그대로.</summary>
+        public static int BuildCost(World w, Balance bal, Base b, FacilityType type) =>
+            (int)Math.Round(bal.Def(type).Cost * (1f + bal.FacilityOverCapCostRatio * NextOverCap(w, bal, b)));
 
         public static void Build(World w, Balance bal, Hex h, FacilityType type)
         {
             if (CanBuild(w, bal, h, type) != null) return;
-            w.Funds -= bal.Def(type).Cost;
+            w.Funds -= BuildCost(w, bal, w.BaseOf(h), type);
             w.Facilities[h] = new Facility { Type = type };
         }
 
@@ -208,7 +215,8 @@ namespace Prototype.Strategy.Rules
         public static Base BuildOutpost(World w, Balance bal, Hex h)
         {
             if (CanBuildOutpost(w, bal, h) != null) return null;
-            w.Funds -= OutpostCost(w, bal, h);
+            var cost = OutpostCost(w, bal, h);
+            w.Funds -= cost;
             var b = new Base
             {
                 Id = w.Bases.Max(x => x.Id) + 1,
@@ -220,6 +228,7 @@ namespace Prototype.Strategy.Rules
             w.Bases.Add(b);
             w.Territory[h] = b.Id;
             HqRules.AddTrust(w, bal, bal.TrustOutpost, $"{b.Name} 건설");
+            w.Log("전초기지", $"{b.Name} {h.ToOffset()} · 비용 {cost}");
             return b;
         }
 

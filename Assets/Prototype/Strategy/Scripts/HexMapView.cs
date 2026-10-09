@@ -31,6 +31,7 @@ namespace Prototype.Strategy
         readonly HexMesh _territory;
         readonly HexMesh _overlay;
         readonly HexMesh _markers;
+        readonly HexMesh _prediction;
 
         public HexMapView(HexMap map, Transform parent)
         {
@@ -39,6 +40,7 @@ namespace Prototype.Strategy
             _territory = new HexMesh("Territory", parent, -0.05f, 1);
             _overlay = new HexMesh("Overlay", parent, -0.1f, 2);
             _markers = new HexMesh("Markers", parent, -0.2f, 3);
+            _prediction = new HexMesh("Prediction", parent, -0.15f, 2);
             BuildTerrain();
         }
 
@@ -165,6 +167,36 @@ namespace Prototype.Strategy
         /// 강조 칸(영역 확장 후보 등)과 커서·선택 테두리.
         /// 강조가 없으면 선택 칸→커서 칸 직선을 보여 준다 (헥스 수학 확인용).
         /// </summary>
+        /// <summary>
+        /// 고른 적 부대의 다음 턴 예상: 이번 턴에 지나갈 칸(진한 선 + 칸 강조), 도착 칸 테두리, 그 뒤 남은 경로(옅은 선), 공격 예상 거점(빨간 테두리).
+        /// </summary>
+        public void UpdatePrediction(EnemyUnit unit, EnemyTurn.Prediction p)
+        {
+            _prediction.Clear();
+            if (unit != null && p != null)
+            {
+                var color = OwnerColor(unit.Owner);
+                var prev = HexLayout.ToWorld(unit.Hex);
+                foreach (var h in p.ThisTurn)
+                {
+                    _prediction.AddFilled(h, CellScale, new Color(color.r, color.g, color.b, 0.28f));
+                    var c = HexLayout.ToWorld(h);
+                    _prediction.AddSegment(prev, c, 0.16f, new Color(color.r, color.g, color.b, 0.95f));
+                    prev = c;
+                }
+                if (p.ThisTurn.Count > 0) _prediction.AddOutline(p.ThisTurn[^1], 0.98f, 0.8f, color);
+                foreach (var h in p.Later)
+                {
+                    var c = HexLayout.ToWorld(h);
+                    _prediction.AddSegment(prev, c, 0.07f, new Color(color.r, color.g, color.b, 0.45f));
+                    prev = c;
+                }
+                if (p.AttackTarget != null) _prediction.AddOutline(p.AttackTarget.Hex, 1.0f, 0.75f, new Color(1f, 0.2f, 0.15f));
+                if (p.EngageGround != null) _prediction.AddOutline(p.EngageGround.Hex, 1.0f, 0.75f, new Color(1f, 0.2f, 0.15f));
+            }
+            _prediction.Apply();
+        }
+
         public void UpdateMarkers(Hex? hover, Hex? selected, IReadOnlyCollection<Hex> highlight, Color highlightColor)
         {
             _overlay.Clear();

@@ -82,11 +82,16 @@ namespace Prototype.Strategy.Rules
         static void UpdateStance(World w, Balance bal, Faction f)
         {
             var old = f.Stance;
-            var strength = FactionStrength(w, f);
-            if (strength < bal.RegroupBelowStrength) f.Stance = Stance.Regroup;
-            else if (w.Turn - f.LastLossTurn < bal.DefensiveTurnsAfterLoss) f.Stance = Stance.Defensive;
-            else f.Stance = Stance.Offensive;
-            if (f.Stance != old) w.EnemyEvents.Add($"{f.Name} 태세 {StanceName(old)} → {StanceName(f.Stance)} (전력 {strength})");
+            f.Stance = ComputeStance(w, bal, f);
+            if (f.Stance != old) w.EnemyEvents.Add($"{f.Name} 태세 {StanceName(old)} → {StanceName(f.Stance)} (전력 {FactionStrength(w, f)})");
+        }
+
+        /// <summary>적 턴 시작 시 정해질 태세 (상태를 바꾸지 않음).</summary>
+        public static Stance ComputeStance(World w, Balance bal, Faction f)
+        {
+            if (FactionStrength(w, f) < bal.RegroupBelowStrength) return Stance.Regroup;
+            if (w.Turn - f.LastLossTurn < bal.DefensiveTurnsAfterLoss) return Stance.Defensive;
+            return Stance.Offensive;
         }
 
         public static string StanceName(Stance s) => s switch
@@ -109,20 +114,7 @@ namespace Prototype.Strategy.Rules
                 return;
             }
 
-            var home = BasesOf(w, f).OrderBy(b => Hex.Distance(b.Hex, u.Hex)).FirstOrDefault();
-            Hex? goal = null;
-            switch (f.Stance)
-            {
-                case Stance.Offensive:
-                    goal = BestTarget(w, bal, f, u)?.Hex;
-                    break;
-                case Stance.Defensive:
-                    if (home != null && Hex.Distance(home.Hex, u.Hex) > 1) goal = home.Hex;
-                    break;
-                case Stance.Regroup:
-                    if (home != null && u.Hex != home.Hex) goal = home.Hex;
-                    break;
-            }
+            var goal = ChooseGoal(w, bal, f, u, f.Stance);
             u.Goal = goal;
             if (goal is not { } g) return;
 
@@ -133,25 +125,93 @@ namespace Prototype.Strategy.Rules
                 return;
             }
 
-            var path = HexPath.Find(w.Map, bal, u.Hex, g);
-            if (path == null) return;
-            var points = bal.EnemyMovePoints;
-            var moved = false;
-            foreach (var step in path)
+            var steps = StepsThisTurn(w, bal, f, u.Hex, g, f.Stance, out _);
+            if (steps.Count > 0)
             {
-                // 목표 거점 본부 칸에는 들어가지 않고 인접에서 멈춘다 (아군 거점) — 자기 기지는 들어간다
-                if (w.BaseAt(step) is { } sb && sb.Owner != f.Id) break;
-                var cost = HexPath.MoveCost(bal, w.Map[step].Terrain);
-                if (cost > points) break;
-                points -= cost;
-                u.Hex = step;
-                moved = true;
-                if (f.Stance == Stance.Offensive && Hex.Distance(u.Hex, g) <= 1) break;
+                u.Hex = steps[^1];
+                if (Vision.IsVisible(w, bal, u.Hex)) w.EnemyEvents.Add($"{u.Name} 이동 → {u.Hex.ToOffset()}");
             }
-            if (moved && Vision.IsVisible(w, bal, u.Hex)) w.EnemyEvents.Add($"{u.Name} 이동 → {u.Hex.ToOffset()}");
 
             if (f.Stance == Stance.Offensive && w.BaseAt(g) is { Owner: World.Player } target && Hex.Distance(u.Hex, g) <= 1)
                 Attack(w, bal, f, u, target);
+        }
+
+        /// <summary>태세에 따른 이번 턴 목표 칸 (없으면 null).</summary>
+        static Hex? ChooseGoal(World w, Balance bal, Faction f, EnemyUnit u, Stance stance)
+        {
+            var home = BasesOf(w, f).OrderBy(b => Hex.Distance(b.Hex, u.Hex)).FirstOrDefault();
+            switch (stance)
+            {
+                case Stance.Offensive:
+                    return BestTarget(w, bal, f, u)?.Hex;
+                case Stance.Defensive:
+                    return home != null && Hex.Distance(home.Hex, u.Hex) > 1 ? home.Hex : null;
+                case Stance.Regroup:
+                    return home != null && u.Hex != home.Hex ? home.Hex : null;
+            }
+            return null;
+        }
+
+        /// <summary>이번 턴에 지나갈 칸들 (이동력 한도, 남의 거점 칸 앞에서 멈춤, 공세면 목표 인접에서 멈춤). rest = 남은 경로.</summary>
+        static List<Hex> StepsThisTurn(World w, Balance bal, Faction f, Hex from, Hex goal, Stance stance, out List<Hex> rest)
+        {
+            var steps = new List<Hex>();
+            rest = new List<Hex>();
+            var path = HexPath.Find(w.Map, bal, from, goal);
+            if (path == null) return steps;
+            var points = bal.EnemyMovePoints;
+            var stopped = false;
+            foreach (var step in path)
+            {
+                if (!stopped)
+                {
+                    // 목표 거점 본부 칸에는 들어가지 않고 인접에서 멈춘다 (아군 거점) — 자기 기지는 들어간다
+                    var cost = HexPath.MoveCost(bal, w.Map[step].Terrain);
+                    if (w.BaseAt(step) is { } sb && sb.Owner != f.Id || cost > points)
+                    {
+                        stopped = true;
+                    }
+                    else
+                    {
+                        points -= cost;
+                        steps.Add(step);
+                        if (stance == Stance.Offensive && Hex.Distance(step, goal) <= 1) stopped = true;
+                        continue;
+                    }
+                }
+                if (w.BaseAt(step) is { } rb && rb.Owner != f.Id) break;
+                rest.Add(step);
+            }
+            return steps;
+        }
+
+        /// <summary>적 부대의 다음 적 턴 행동 예상 (상태를 바꾸지 않음). 다른 부대의 움직임·교전은 반영하지 않는다.</summary>
+        public sealed class Prediction
+        {
+            public Stance Stance;
+            public Hex? Goal;
+            public string GoalName;
+            public List<Hex> ThisTurn = new();
+            public List<Hex> Later = new();
+            public Base AttackTarget;
+            public GroundUnit EngageGround;
+        }
+
+        public static Prediction Predict(World w, Balance bal, EnemyUnit u)
+        {
+            var f = FactionOf(w, u.Owner);
+            var p = new Prediction { Stance = ComputeStance(w, bal, f) };
+            p.EngageGround = w.GroundUnits.FirstOrDefault(g => g.Deployed && Hex.Distance(g.Hex, u.Hex) <= 1);
+            if (p.EngageGround != null) return p;
+            p.Goal = ChooseGoal(w, bal, f, u, p.Stance);
+            if (p.Goal is not { } goal) return p;
+            p.GoalName = w.BaseAt(goal)?.Name ?? goal.ToOffset().ToString();
+            if (!(p.Stance == Stance.Offensive && Hex.Distance(u.Hex, goal) <= 1))
+                p.ThisTurn = StepsThisTurn(w, bal, f, u.Hex, goal, p.Stance, out p.Later);
+            var end = p.ThisTurn.Count > 0 ? p.ThisTurn[^1] : u.Hex;
+            if (p.Stance == Stance.Offensive && w.BaseAt(goal) is { Owner: World.Player } target && Hex.Distance(end, goal) <= 1)
+                p.AttackTarget = target;
+            return p;
         }
 
         /// <summary>공세 목표: 가치(등급·시설) ÷ 거리 ÷ 알려진 방어. 편대 수는 탐지 범위 안일 때만 반영.</summary>
@@ -268,6 +328,7 @@ namespace Prototype.Strategy.Rules
                 }
             }
             w.Intercepts.Add(rep);
+            w.Log("피습", $"{target.Name} ← {u.Name} (전력 {rep.EnemyBefore}) · 요격 편대 {rep.SquadronsEngaged} · {rep.Rounds}R · 시설 {rep.FacilityDefense} · {(rep.Captured ? "상실" : "방어")}");
             w.EnemyEvents.Add($"{target.Name} 피습 ({u.Name}): {(rep.Captured ? "거점 상실" : remaining == 0 ? "격멸" : "격퇴")}");
         }
 

@@ -187,6 +187,7 @@ namespace Prototype.Strategy.Rules
             if (w.FactionById(oldOwner) is { } f) f.LastLossTurn = w.Turn;
             w.Stats.BasesCaptured++;
             w.EnemyEvents.Add($"{g.Name} {b.Name} 점령!");
+            w.Log("점령", $"{g.Name}(전력 {g.Strength}) → {b.Name}");
             HqRules.AddTrust(w, bal, bal.TrustCapture, $"{b.Name} 점령");
             if (b.Id == w.GoalBaseId) HqRules.Win(w, bal, b);
         }

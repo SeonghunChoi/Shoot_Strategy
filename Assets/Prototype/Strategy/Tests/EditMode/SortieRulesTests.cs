@@ -98,6 +98,23 @@ namespace Prototype.Strategy.Tests
         }
 
         [Test]
+        public void Xp_BasePlusCombatPlusShare()
+        {
+            foreach (var d in _bal.Aircraft.Values) d.Range = 6;
+            var r = SortieRules.Resolve(_w, _bal, _s1, _unitA);
+            var total = r.Aircraft.Sum(o => o.XpCombat);
+            foreach (var o in r.Aircraft)
+            {
+                Assert.AreEqual(_bal.SortieBaseXp, o.XpBase);
+                Assert.AreEqual(o.Rounds * _bal.XpPerRound, o.XpCombat);
+                Assert.AreEqual((int)System.Math.Round((total - o.XpCombat) * _bal.SortieXpShare), o.XpShare);
+                Assert.AreEqual(o.XpBase + o.XpCombat + o.XpShare, o.XpGain);
+            }
+            // 교전하지 않은 기체도 기본 경험치는 받는다
+            Assert.IsTrue(r.Aircraft.All(o => o.XpGain >= _bal.SortieBaseXp));
+        }
+
+        [Test]
         public void Refuel_IsConsumedBySortie()
         {
             _s1.Refuel = true;

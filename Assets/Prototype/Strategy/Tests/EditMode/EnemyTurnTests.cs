@@ -164,6 +164,22 @@ namespace Prototype.Strategy.Tests
         }
 
         [Test]
+        public void Predict_MatchesActualMoveAndAttack()
+        {
+            var u = _w.EnemyUnits[0]; // A부대 → 해안 기지
+            _w.EnemyUnits.RemoveAll(x => x != u);
+            _bal.ReinforceTurns = 100;
+            var p = EnemyTurn.Predict(_w, _bal, u);
+            Assert.AreEqual(Stance.Offensive, p.Stance);
+            Assert.IsNotEmpty(p.ThisTurn);
+            var start = u.Hex;
+            EnemyTurn.Run(_w, _bal);
+            if (_w.EnemyUnits.Contains(u) && _w.Intercepts.Count == 0) Assert.AreEqual(p.ThisTurn[^1], u.Hex);
+            Assert.AreEqual(p.AttackTarget != null, _w.Intercepts.Count > 0);
+            Assert.AreNotEqual(start, p.ThisTurn[^1]);
+        }
+
+        [Test]
         public void AllBasesLost_IsGameOver()
         {
             foreach (var b in _w.Bases.Where(b => b.Owner == World.Player).ToList()) b.Owner = 1;

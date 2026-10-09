@@ -35,6 +35,9 @@ namespace Prototype.Strategy.Rules
         public string Fate;      // 잔해 회수 / 영구 손실 / —
         public string PilotFate; // 탈출 n턴 / 포로 / —
         public int XpGain;
+        public int XpBase;    // 출격 기본
+        public int XpCombat;  // 자기 교전 라운드
+        public int XpShare;   // 편대 공유
         public bool SkillUp;
     }
 
@@ -201,6 +204,11 @@ namespace Prototype.Strategy.Rules
                 report.Order = order++;
                 w.Debriefs.Add(report);
                 w.SortiedTargets.Add(plan.Target);
+                var downs = report.Aircraft.Where(o => o.ShotDown).Select(o => $"{o.AircraftName}:{o.Fate}/{o.PilotFate}");
+                w.Log("출격", $"순서 {report.Order} · {report.SquadronName} → {report.TargetName} · {MissionName(report.Mission)}" +
+                              $" · {(report.OverEnemyTerritory ? "적 영역" : "아군·중립")}{(report.OverlapBonus ? " · 겹침 보정" : "")}" +
+                              $" · 파괴율 {report.DestructionRate:0.00} · {(report.Exit == ExitReason.Retreat ? "철수" : "완료")} · {report.Rounds}R" +
+                              $" · 비용 {report.Cost} 보상 {report.Reward}" + (downs.Any() ? $" · 격추 {string.Join(", ", downs)}" : ""));
             }
             w.SortiePlan.Clear();
             return w.Debriefs;
@@ -332,7 +340,8 @@ namespace Prototype.Strategy.Rules
             }
             w.Funds += report.Reward;
 
-            // 파일럿 피로·경험치, 편대 표시
+            // 파일럿 피로·경험치: 출격 기본 + 자기 교전 라운드 + 편대의 다른 기체 교전 경험치 × 공유 비율
+            var squadronCombatXp = outcomes.Values.Sum(o => o.Rounds * bal.XpPerRound);
             foreach (var o in outcomes.Values)
             {
                 var a = w.AircraftById(o.AircraftId);
@@ -340,7 +349,10 @@ namespace Prototype.Strategy.Rules
                 var p = w.Pilots.FirstOrDefault(x => x.Name == o.PilotName);
                 if (p == null) continue;
                 p.Fatigue = Math.Min(100, p.Fatigue + bal.SortieFatigue);
-                o.XpGain = o.Rounds * bal.XpPerRound;
+                o.XpBase = bal.SortieBaseXp;
+                o.XpCombat = o.Rounds * bal.XpPerRound;
+                o.XpShare = (int)Math.Round((squadronCombatXp - o.XpCombat) * bal.SortieXpShare);
+                o.XpGain = o.XpBase + o.XpCombat + o.XpShare;
                 p.Xp += o.XpGain;
                 if (p.Skill < 5 && p.Xp >= p.Skill * bal.XpPerSkill)
                 {

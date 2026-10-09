@@ -59,6 +59,9 @@ namespace Prototype.Strategy
         /// <summary>출동 목표를 고르는 중인 지상군 (null이면 아님).</summary>
         public GroundUnit GroundPick { get; private set; }
         public HashSet<Hex> Visible { get; private set; } = new();
+        /// <summary>고른 칸의 보이는 적 부대와 그 다음 턴 예상 (없으면 null).</summary>
+        public EnemyUnit SelectedEnemy { get; private set; }
+        public EnemyTurn.Prediction SelectedEnemyPrediction { get; private set; }
         public int DebriefIndex { get; private set; }
         /// <summary>미실행 출격 계획이 있는 채로 턴 종료를 한 번 눌렀는지 (두 번째 누르면 취소하고 종료).</summary>
         public bool EndTurnWarned { get; private set; }
@@ -71,11 +74,23 @@ namespace Prototype.Strategy
         readonly List<Hex> _outpostCandidates = new();
         readonly List<Hex> _highlight = new();
 
+        const string TesterPrefKey = "StrategyProto.Tester";
+
+        /// <summary>플레이 로그 (PlaytestLogs/strategy, git 제외).</summary>
+        public PlaytestLog Log { get; private set; }
+        /// <summary>이번 턴에 플레이어가 실제로 쓴 시간 (창이 비활성이면 멈춤, S8).</summary>
+        public float TurnSeconds { get; private set; }
+        StrategyTuningMenu _tuning;
+
+        public static string LogFolder => System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "PlaytestLogs", "strategy"));
+
         void Awake()
         {
             Balance = new Balance();
             World = World.Create(seed, Balance);
             _controls = new StrategyControls();
+            Log = new PlaytestLog(LogFolder) { Tester = PlayerPrefs.GetString(TesterPrefKey, "") };
+            Log.BeginRun(World, seed);
 
             var bounds = HexLayout.Bounds(World.Map);
             MapCamera = new MapCamera(Camera.main, bounds);
@@ -84,12 +99,32 @@ namespace Prototype.Strategy
 
             _hud = gameObject.AddComponent<StrategyHud>();
             _hud.Init(this);
+            _tuning = gameObject.AddComponent<StrategyTuningMenu>();
+            _tuning.Init(this);
             AutoScreenshot.AttachIfRequested(gameObject);
         }
 
+        public void SetTester(string name)
+        {
+            Log.Tester = name;
+            PlayerPrefs.SetString(TesterPrefKey, name);
+        }
+
+        public void OpenLogFolder()
+        {
+            System.IO.Directory.CreateDirectory(LogFolder);
+            Application.OpenURL("file:///" + LogFolder.Replace('\\', '/'));
+        }
+
+        public void ToggleTuning() => _tuning.Toggle();
+
         public void Restart()
         {
+            // 진행 중이던 판은 "중단"으로 기록
+            if (Log.Running) Log.EndRun(World, Balance, "중단", TurnSeconds);
             World = World.Create(seed, Balance);
+            Log.BeginRun(World, seed);
+            TurnSeconds = 0f;
             ShowEnemyReport = false;
             ShowHq = false;
             Selected = null;
@@ -137,7 +172,11 @@ namespace Prototype.Strategy
                 return;
             }
             ClearModes();
-            Economy.EndTurn(World, Balance);
+            var gaps = SortieRules.DefenseGaps(World).Count(); // 적 턴 직전 방어 공백 (S1)
+            var report = Economy.EndTurn(World, Balance);
+            Log.LogTurn(World, report, TurnSeconds, gaps);
+            TurnSeconds = 0f;
+            if (World.GameOver != null) Log.EndRun(World, Balance, ResultName(World));
             ShowEnemyReport = World.EnemyEvents.Count > 0 || World.Intercepts.Count > 0;
         }
 
@@ -186,7 +225,9 @@ namespace Prototype.Strategy
         {
             var dt = Time.unscaledDeltaTime;
             var mouse = _controls.Point.ReadValue<Vector2>();
-            var overUi = _hud.IsOverUi(mouse) || ShowDebrief || ShowEnemyReport;
+            var overUi = _hud.IsOverUi(mouse) || _tuning.IsOver(mouse) || ShowDebrief || ShowEnemyReport;
+            if (Application.isFocused && World.GameOver == null) TurnSeconds += Time.unscaledDeltaTime;
+            if (_controls.TuningToggle.WasPressedThisFrame()) _tuning.Toggle();
             var typing = GUIUtility.keyboardControl != 0;
 
             if (_controls.DebugToggle.WasPressedThisFrame()) _hud.ToggleHelp();
@@ -243,6 +284,11 @@ namespace Prototype.Strategy
             _view.UpdateTerritory(World, Visible, Vision.StaleSightings(World, Balance));
             BuildHighlight(out var color);
             _view.UpdateMarkers(Cursor.Hover, Selected, _highlight, color);
+
+            // 고른 칸에 보이는 적 부대가 있으면 다음 턴 예상 경로
+            SelectedEnemy = Selected is { } sh && Visible.Contains(sh) ? World.EnemyUnitAt(sh) : null;
+            SelectedEnemyPrediction = SelectedEnemy != null && World.GameOver == null ? EnemyTurn.Predict(World, Balance, SelectedEnemy) : null;
+            _view.UpdatePrediction(SelectedEnemy, SelectedEnemyPrediction);
         }
 
         /// <summary>맵 강조: 전초기지 후보 > 출격 목표 후보 > 재배치 후보 거점 > 확장 후보 > 선택 편대의 작전 반경.</summary>
@@ -349,6 +395,20 @@ namespace Prototype.Strategy
         /// <summary>확장 후보 칸 (HUD가 비용 표시에 사용).</summary>
         public IReadOnlyList<Hex> ExpandCandidates => _expandCandidates;
 
-        void OnDestroy() => _controls?.Dispose();
+        static string ResultName(World w)
+        {
+            if (w.Victory) return "승리";
+            if (w.GameOver == null) return "중단";
+            if (w.GameOver.StartsWith("해임")) return "해임";
+            if (w.GameOver.StartsWith("파산")) return "파산";
+            if (w.GameOver.StartsWith("모든 거점")) return "상실";
+            return w.GameOver;
+        }
+
+        void OnDestroy()
+        {
+            if (Log != null && Log.Running) Log.EndRun(World, Balance, "중단", TurnSeconds);
+            _controls?.Dispose();
+        }
     }
 }

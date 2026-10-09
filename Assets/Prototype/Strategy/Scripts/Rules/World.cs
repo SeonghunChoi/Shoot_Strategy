@@ -16,6 +16,13 @@ namespace Prototype.Strategy.Rules
         public int Structures;
     }
 
+    public sealed class GameEvent
+    {
+        public int Turn;
+        public string Kind;
+        public string Detail;
+    }
+
     public sealed class Facility
     {
         public FacilityType Type;
@@ -63,6 +70,8 @@ namespace Prototype.Strategy.Rules
 
         public readonly List<Aircraft> Aircraft = new();
         public readonly List<Pilot> Pilots = new();
+        /// <summary>상점의 파일럿 고용 후보 (Id 0, 고용하면 Pilots로 옮김).</summary>
+        public readonly List<Pilot> HireCandidates = new();
         public readonly List<Squadron> Squadrons = new();
         public int NextId = 1;
 
@@ -85,6 +94,10 @@ namespace Prototype.Strategy.Rules
         public int GoalBaseId;
         public bool Victory;
         public readonly GameStats Stats = new();
+        /// <summary>플레이 로그용 사건 기록 (종류, 내용). 로거가 턴마다 새로 쌓인 것만 내보낸다.</summary>
+        public readonly List<GameEvent> Events = new();
+
+        public void Log(string kind, string detail) => Events.Add(new GameEvent { Turn = Turn, Kind = kind, Detail = detail });
         /// <summary>이번 턴 출격 계획 (순서대로 실행).</summary>
         public readonly List<SortiePlan> SortiePlan = new();
         /// <summary>가장 최근 출격 실행의 디브리핑.</summary>
@@ -126,6 +139,7 @@ namespace Prototype.Strategy.Rules
                 VisionBalance = balance,
             };
             StartingSetup.Apply(world);
+            SquadronRules.RefreshCandidates(world, balance);
             return world;
         }
     }

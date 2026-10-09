@@ -26,6 +26,7 @@ namespace Prototype.Strategy
         public InputAction PanelUp { get; }
         public InputAction PanelDown { get; }
         public InputAction TabPrev { get; }
+        public InputAction TuningToggle { get; }
         public InputAction TabNext { get; }
 
         public StrategyControls()
@@ -61,6 +62,7 @@ namespace Prototype.Strategy
             PanelUp = Button("PanelUp", "<Gamepad>/dpad/up");
             PanelDown = Button("PanelDown", "<Gamepad>/dpad/down");
             TabPrev = Button("TabPrev", "<Keyboard>/q", "<Gamepad>/leftShoulder");
+            TuningToggle = Button("TuningToggle", "<Keyboard>/f2");
             TabNext = Button("TabNext", "<Keyboard>/e", "<Gamepad>/rightShoulder");
 
             _map.Enable();

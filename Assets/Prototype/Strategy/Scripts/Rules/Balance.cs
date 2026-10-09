@@ -45,16 +45,31 @@ namespace Prototype.Strategy.Rules
     /// </summary>
     public sealed class Balance
     {
+        [Tune("경제", "시작 자금", 0f, 5000f, restart: true)]
         public int StartingFunds = 1000;
+        [Tune("경제", "상부 예산 기준", 0f, 1000f)]
         public int HqBudget = 300;
+        [Tune("경제", "영역 유지비 / 칸", 0f, 50f)]
         public int UpkeepPerHex = 10;
+        [Tune("거점·시설", "영역 확장 기본 비용", 0f, 300f)]
         public int ExpandBaseCost = 50;
+        [Tune("거점·시설", "영역 확장 칸당 누진", 0f, 100f)]
         public int ExpandCostPerHex = 25;
+        [Tune("작전 반경·급유·전초기지", "전초기지 기본 비용", 0f, 2000f)]
         public int OutpostCost = 600;
+        [Tune("경제", "파산: 연속 적자 턴", 1f, 10f)]
         public int BankruptTurns = 3;
+        [Tune("경제", "금융 이율 / 등급", 0f, 0.1f)]
         public float FinanceRatePerGrade = 0.02f;
+        [Tune("거점·시설", "시설 등급 상승 비용 계수", 0.1f, 2f)]
         public float FacilityUpgradeFactor = 0.5f; // 비용 = 건설비 × 다음 등급 × 계수
         public int MaxFacilityGrade = 4;
+        /// <summary>시설 상한을 넘는 시설 하나마다 건설비 +이 비율 (누적). 상한은 "할증 없이 지을 수 있는 수".</summary>
+        [Tune("거점·시설", "상한 초과 건설비 할증 / 개", 0f, 2f)]
+        public float FacilityOverCapCostRatio = 0.5f;
+        /// <summary>켜면 상한에서 건설을 막는다 (원래 방식, 비교용).</summary>
+        [Tune("거점·시설", "시설 상한 엄격 적용", 0f, 1f)]
+        public bool HardFacilityCap = false;
 
         /// <summary>거점 등급별 시설 총개수 상한 (인덱스 = 등급).</summary>
         public int[] FacilityCap = { 0, 3, 5, 8, 12 };
@@ -78,108 +93,191 @@ namespace Prototype.Strategy.Rules
         public readonly Dictionary<FacilityType, FacilityDef> Facilities = new();
 
         // ---- 편대·기체·파일럿 (3단계) ----
+        [Tune("편대·파일럿", "편대 최대 기체 수", 1f, 6f)]
         public int SquadronMaxSize = 4;
+        [Tune("편대·파일럿", "격납고당 편대 수", 1f, 4f)]
         public int SquadronsPerHangar = 2;
         /// <summary>기지 설비(보급창고)에 의한 작전 반경 증가.</summary>
+        [Tune("작전 반경·급유·전초기지", "보급창고 반경 보너스", 0f, 3f)]
         public int DepotRadiusBonus = 1;
         /// <summary>공중급유: (기체 반경 + 설비 보너스) × 이 값.</summary>
+        [Tune("작전 반경·급유·전초기지", "공중급유 반경 배율", 1f, 4f)]
         public float RefuelRadiusMultiplier = 2f;
         /// <summary>공중급유 비용 = 편대 출격 비용 × 이 값.</summary>
+        [Tune("작전 반경·급유·전초기지", "공중급유 비용 비율", 0f, 3f)]
         public float RefuelCostRatio = 1f;
         /// <summary>전초기지는 가장 가까운 아군 거점에서 이 거리 이상.</summary>
+        [Tune("작전 반경·급유·전초기지", "전초기지 최소 거리", 1f, 6f)]
         public int OutpostMinDistance = 3;
+        [Tune("작전 반경·급유·전초기지", "전초기지 거리당 비용", 0f, 200f)]
         public int OutpostCostPerDistance = 50;
+        [Tune("편대·파일럿", "일반 파일럿 급여", 0f, 150f)]
         public int SalaryRegular = 40;
+        [Tune("편대·파일럿", "네임드 파일럿 급여", 0f, 300f)]
         public int SalaryNamed = 80;
+        [Tune("편대·파일럿", "파일럿 고용비 (숙련 1)", 0f, 600f)]
         public int HirePilotCost = 200;
+        [Tune("편대·파일럿", "고용비 추가 / 숙련", 0f, 400f)]
+        public int HireCostPerSkill = 100;
+        [Tune("편대·파일럿", "고용 후보 수", 1f, 6f)]
+        public int HireCandidateCount = 3;
+        [Tune("편대·파일럿", "고용 후보 교체 주기 (턴)", 1f, 10f)]
+        public int HireRefreshTurns = 2;
+        [Tune("편대·파일럿", "기체 판매 비율", 0f, 1f)]
         public float SellRatio = 0.5f;
         /// <summary>유흥가: 주둔 파일럿 급여 환수율 = 등급 × 이 값.</summary>
+        [Tune("편대·파일럿", "유흥가 급여 환수 / 등급", 0f, 0.5f)]
         public float EntertainmentRefundPerGrade = 0.15f;
         /// <summary>턴당 손상 회복(%): 정비소 등급 × 이 값. 정비소 없으면 RepairWithoutMaintenance.</summary>
+        [Tune("편대·파일럿", "정비소 수리 % / 등급", 0f, 50f)]
         public int RepairPerMaintenanceGrade = 15;
+        [Tune("편대·파일럿", "정비소 없을 때 수리 %", 0f, 30f)]
         public int RepairWithoutMaintenance = 5;
         /// <summary>수리비 = 기체 가격 × 회복 비율 × 이 값.</summary>
+        [Tune("편대·파일럿", "수리비 계수", 0f, 1f)]
         public float RepairCostFactor = 0.3f;
+        [Tune("편대·파일럿", "피로 회복 / 턴", 0f, 50f)]
         public int FatigueRecovery = 20;
+        [Tune("편대·파일럿", "유흥가 피로 회복 / 등급", 0f, 30f)]
         public int FatigueRecoveryPerEntertainmentGrade = 10;
         /// <summary>이 값 이상이면 탈진 (출격 불가).</summary>
+        [Tune("편대·파일럿", "탈진 기준 피로", 30f, 100f)]
         public int FatigueExhausted = 70;
 
         // ---- 출격·자동 정산 (4단계) ----
         /// <summary>기체 크기별 출격 비용 (연료·탄약). 인덱스 = 크기.</summary>
         public int[] SortieCostBySize = { 0, 30, 50, 80 };
+        [Tune("출격·자동 정산", "보급창고 출격 비용 할인", 0f, 0.8f)]
         public float DepotSortieDiscount = 0.2f;
         /// <summary>이 손상(%) 이상이면 다음 기체로 교대.</summary>
+        [Tune("출격·자동 정산", "교대 기준 손상 %", 20f, 100f)]
         public int SwapDamage = 60;
+        [Tune("출격·자동 정산", "최대 라운드", 3f, 30f)]
         public int MaxRounds = 12;
         /// <summary>직접 플레이 대비 불리 계수 (아군 공격력에 곱함).</summary>
+        [Tune("출격·자동 정산", "자동 정산 불리 계수", 0.3f, 1.5f)]
         public float AutoResolvePenalty = 0.85f;
         /// <summary>적 그룹이 전경 기체에 주는 라운드당 손상(%) = 남은 전력 × 이 값.</summary>
+        [Tune("출격·자동 정산", "적 반격 계수", 0.1f, 3f)]
         public float EnemyHitPerStrength = 1.0f;
+        [Tune("출격·자동 정산", "겹침 보정: 대공 감소", 0f, 0.9f)]
         public float OverlapAaReduction = 0.3f;
+        [Tune("출격·자동 정산", "현상금: 부대", 0f, 1000f)]
         public int BountyUnit = 300;
+        [Tune("출격·자동 정산", "현상금: 거점", 0f, 1500f)]
         public int BountyBase = 500;
+        [Tune("출격·자동 정산", "적 영역 격추 시 포로 확률", 0f, 1f)]
         public float CaptureChance = 0.5f;
+        [Tune("출격·자동 정산", "몸값", 0f, 1000f)]
         public int RansomCost = 300;
         /// <summary>포로 파일럿 급여 비율 (0~1). 0이면 포로는 급여 없음.</summary>
+        [Tune("출격·자동 정산", "포로 급여 비율", 0f, 1f)]
         public float CapturedSalaryRatio = 0.5f;
+        [Tune("출격·자동 정산", "출격 피로", 0f, 60f)]
         public int SortieFatigue = 30;
+        [Tune("출격·자동 정산", "경험치 / 라운드", 0f, 50f)]
         public int XpPerRound = 10;
+        /// <summary>출격에 참가한 모든 파일럿이 받는 기본 경험치.</summary>
+        [Tune("출격·자동 정산", "경험치: 출격 기본", 0f, 50f)]
+        public int SortieBaseXp = 10;
+        /// <summary>편대의 다른 기체가 얻은 교전 경험치 합 × 이 비율을 나눠 받는다.</summary>
+        [Tune("출격·자동 정산", "경험치: 편대 공유 비율", 0f, 1f)]
+        public float SortieXpShare = 0.3f;
         /// <summary>숙련도 상승에 필요한 경험치 = 현재 숙련도 × 이 값.</summary>
+        [Tune("출격·자동 정산", "숙련도 상승 경험치 / 숙련", 20f, 300f)]
         public int XpPerSkill = 100;
         public int MaxReturnTurns = 3;
 
         // ---- 적 세력·시야 (5단계) ----
+        [Tune("적 세력·시야", "시야 사용", 0f, 1f)]
         public bool VisionEnabled = true;
         /// <summary>아군 영역 밖으로 기본 시야 칸 수.</summary>
+        [Tune("적 세력·시야", "기본 시야 (영역 +칸)", 0f, 5f)]
         public int TerritoryVisionRange = 1;
         /// <summary>레이더 등급 1당 시야 +칸 (영역 기준).</summary>
+        [Tune("적 세력·시야", "레이더 시야 / 등급", 0f, 3f)]
         public int RadarRangePerGrade = 1;
+        [Tune("적 세력·시야", "마지막 목격 유지 턴", 0f, 15f)]
         public int SightingMemoryTurns = 5;
+        [Tune("적 세력·시야", "적 이동력", 1f, 5f)]
         public int EnemyMovePoints = 2;
         public int MountainMoveCost = 2;
         /// <summary>적 세력이 아군 거점의 주둔 편대 수를 아는 범위 (부대·거점 기준).</summary>
+        [Tune("적 세력·시야", "적이 편대를 아는 거리", 0f, 8f)]
         public int EnemyDetectRadius = 3;
+        [Tune("적 세력·시야", "적 판단: 보이는 기체 방어 가중", 0f, 30f)]
         public float KnownAircraftDefenseWeight = 8f;
+        [Tune("적 세력·시야", "재정비 기준 세력 전력", 0f, 60f)]
         public int RegroupBelowStrength = 15;
+        [Tune("적 세력·시야", "손실 후 방어 턴", 0f, 6f)]
         public int DefensiveTurnsAfterLoss = 2;
+        [Tune("적 세력·시야", "대공포 방어 / 등급", 0f, 20f)]
         public int AntiAirDefensePerGrade = 5;
+        [Tune("적 세력·시야", "SAM 방어 / 등급", 0f, 40f)]
         public int SamDefensePerGrade = 10;
         /// <summary>요격·대공 후 남은 적 전력이 이 값 이상이면 거점 상실.</summary>
+        [Tune("적 세력·시야", "거점 상실 기준 남은 전력", 1f, 40f)]
         public int CaptureThreshold = 10;
+        [Tune("적 세력·시야", "요격 피로", 0f, 50f)]
         public int InterceptFatigue = 20;
         /// <summary>재배치(이동 비행) 피로.</summary>
+        [Tune("적 세력·시야", "재배치 피로", 0f, 50f)]
         public int RelocateFatigue = 10;
         public int CapturedBaseAntiAir = 5;
+        [Tune("적 세력·시야", "세력 간·지상 교전 최대 피해", 1f, 30f)]
         public int FactionCombatMaxDamage = 10;
+        [Tune("적 세력·시야", "적 보충 주기 (턴)", 1f, 20f)]
         public int ReinforceTurns = 6;
+        [Tune("적 세력·시야", "보충 부대 공중", 0f, 40f)]
         public int ReinforceAir = 10;
+        [Tune("적 세력·시야", "보충 부대 지상", 0f, 40f)]
         public int ReinforceGround = 12;
+        [Tune("적 세력·시야", "적 거점 회복 / 턴", 0f, 10f)]
         public int EnemyBaseRegen = 1;
+        [Tune("적 세력·시야", "기지 주둔 부대 회복 / 턴", 0f, 10f)]
         public int EnemyUnitRegen = 2;
 
         // ---- 지상군·상부 (6단계) ----
+        [Tune("지상군", "지상군 고용비", 0f, 800f)]
         public int GroundHireCost = 200;
+        [Tune("지상군", "지상군 기본 전력", 1f, 60f)]
         public int GroundBaseStrength = 15;
+        [Tune("지상군", "병영 등급당 전력", 0f, 20f)]
         public int GroundStrengthPerBarracksGrade = 5;
+        [Tune("지상군", "지상군 유지비", 0f, 100f)]
         public int GroundUpkeep = 30;
+        [Tune("지상군", "출동 비용", 0f, 300f)]
         public int GroundDeployCost = 50;
+        [Tune("지상군", "지상군 이동력", 1f, 5f)]
         public int GroundMovePoints = 2;
         public int GroundVisionRange = 1;
         /// <summary>지상군(주둔·출동)에서 이 거리 안이면 전초기지 건설 가능 (공중 도달과 별개).</summary>
+        [Tune("지상군", "지상군 전초기지 도달", 0f, 5f)]
         public int GroundOutpostReach = 2;
+        [Tune("상부", "시작 신뢰도", 1f, 100f, restart: true)]
         public int StartingTrust = 50;
         /// <summary>상부 예산 = HqBudget × (이 값 + 신뢰도/100).</summary>
+        [Tune("상부", "예산 기본 비율", 0f, 1.5f)]
         public float BudgetBaseRatio = 0.5f;
+        [Tune("상부", "장기 목표 신뢰도", 0f, 60f)]
         public int TrustGoal = 30;
+        [Tune("상부", "점령 신뢰도", 0f, 30f)]
         public int TrustCapture = 10;
+        [Tune("상부", "전초기지 신뢰도", 0f, 20f)]
         public int TrustOutpost = 5;
+        [Tune("상부", "지시 완수", 0f, 30f)]
         public int TrustDirectiveSuccess = 10;
+        [Tune("상부", "지시 실패 (감소)", 0f, 40f)]
         public int TrustDirectiveFail = 15;
+        [Tune("상부", "지시 거부 (감소)", 0f, 40f)]
         public int TrustRefuse = 10;
+        [Tune("상부", "거점 상실 (감소)", 0f, 40f)]
         public int TrustBaseLost = 10;
+        [Tune("상부", "지시 주기 (턴)", 1f, 15f)]
         public int DirectiveInterval = 5;
+        [Tune("상부", "지시 기한 (턴)", 1f, 10f)]
         public int DirectiveDeadline = 4;
+        [Tune("상부", "확대 지시 칸 수", 1f, 10f)]
         public int DirectiveExpandHexes = 4;
 
         public readonly Dictionary<AircraftType, AircraftDef> Aircraft = new();

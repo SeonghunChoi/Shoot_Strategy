@@ -78,10 +78,21 @@ namespace Prototype.Strategy.Tests
             // 남부 전초기지(1등급)는 2등급 시설 불가
             BaseRules.Expand(_w, _bal, _south, Off(4, 8));
             Assert.AreEqual("거점 2등급 필요", BaseRules.CanBuild(_w, _bal, Off(4, 8), FacilityType.Maintenance));
-            // 상한 3: 이미 2개 → 1개 더 짓고 나면 상한
+            // 상한 3: 이미 2개 → 1개 더 짓고 나면 상한. 그다음부터는 할증 (+50%, +100% …)
+            Assert.AreEqual(150, BaseRules.BuildCost(_w, _bal, _south, FacilityType.Barracks));
             BaseRules.Build(_w, _bal, Off(4, 8), FacilityType.Barracks);
             BaseRules.Expand(_w, _bal, _south, Off(4, 10));
-            Assert.AreEqual("시설 상한", BaseRules.CanBuild(_w, _bal, Off(4, 10), FacilityType.AntiAir));
+            Assert.IsNull(BaseRules.CanBuild(_w, _bal, Off(4, 10), FacilityType.AntiAir));
+            Assert.AreEqual(180, BaseRules.BuildCost(_w, _bal, _south, FacilityType.AntiAir)); // 120 × 1.5
+            var funds = _w.Funds;
+            BaseRules.Build(_w, _bal, Off(4, 10), FacilityType.AntiAir);
+            Assert.AreEqual(funds - 180, _w.Funds);
+            Assert.AreEqual(240, BaseRules.BuildCost(_w, _bal, _south, FacilityType.AntiAir)); // 두 번째 초과 × 2.0
+            // 엄격 적용(원래 방식)이면 상한에서 막힌다
+            _bal.HardFacilityCap = true;
+            BaseRules.Expand(_w, _bal, _south, Off(5, 10));
+            Assert.AreEqual("시설 상한", BaseRules.CanBuild(_w, _bal, Off(5, 10), FacilityType.AntiAir));
+            _bal.HardFacilityCap = false;
             // 정유시설은 유전 칸만
             Assert.AreEqual("유전 칸 필요", BaseRules.CanBuild(_w, _bal, Off(2, 4), FacilityType.Refinery));
         }

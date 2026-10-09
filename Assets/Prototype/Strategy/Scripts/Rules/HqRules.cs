@@ -73,6 +73,7 @@ namespace Prototype.Strategy.Rules
             if (w.Directive == null) return;
             w.Stats.DirectivesRefused++;
             AddTrust(w, bal, -bal.TrustRefuse, $"지시 거부: {w.Directive.Text}");
+            w.Log("지시 거부", w.Directive.Text);
             w.Directive = null;
         }
 
@@ -88,12 +89,14 @@ namespace Prototype.Strategy.Rules
                 {
                     w.Stats.DirectivesDone++;
                     AddTrust(w, bal, bal.TrustDirectiveSuccess, $"지시 완수: {d.Text}");
+                    w.Log("지시 완수", d.Text);
                     w.Directive = null;
                 }
                 else if (result == false || w.Turn >= d.Deadline)
                 {
                     w.Stats.DirectivesFailed++;
                     AddTrust(w, bal, -bal.TrustDirectiveFail, $"지시 실패: {d.Text}");
+                    w.Log("지시 실패", d.Text);
                     w.Directive = null;
                 }
             }
@@ -155,6 +158,7 @@ namespace Prototype.Strategy.Rules
             d.Text += $" (턴 {deadline}까지)";
             w.Directive = d;
             w.EnemyEvents.Add($"상부 긴급 지시: {d.Text}");
+            w.Log("지시", d.Text);
             return d;
         }
     }
