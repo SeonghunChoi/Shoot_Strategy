@@ -46,11 +46,11 @@ namespace Prototype.Strategy.Rules
     public sealed class Balance
     {
         [Tune("경제", "시작 자금", 0f, 5000f, restart: true)]
-        public int StartingFunds = 1000;
+        public int StartingFunds = 2000;
         [Tune("경제", "상부 예산 기준", 0f, 1000f)]
-        public int HqBudget = 300;
+        public int HqBudget = 400;
         [Tune("경제", "영역 유지비 / 칸", 0f, 50f)]
-        public int UpkeepPerHex = 10;
+        public int UpkeepPerHex = 7;
         [Tune("거점·시설", "영역 확장 기본 비용", 0f, 300f)]
         public int ExpandBaseCost = 50;
         [Tune("거점·시설", "영역 확장 칸당 누진", 0f, 100f)]
@@ -60,7 +60,7 @@ namespace Prototype.Strategy.Rules
         [Tune("경제", "파산: 연속 적자 턴", 1f, 10f)]
         public int BankruptTurns = 3;
         [Tune("경제", "금융 이율 / 등급", 0f, 0.1f)]
-        public float FinanceRatePerGrade = 0.02f;
+        public float FinanceRatePerGrade = 0.03f;
         [Tune("거점·시설", "시설 등급 상승 비용 계수", 0.1f, 2f)]
         public float FacilityUpgradeFactor = 0.5f; // 비용 = 건설비 × 다음 등급 × 계수
         public int MaxFacilityGrade = 4;
@@ -289,19 +289,19 @@ namespace Prototype.Strategy.Rules
             AddAircraft(AircraftType.F4, "F-4", AircraftRole.Multirole, 2, 2, 900, 120, air: 7, ground: 6, bombing: 4, range: 4);
             AddAircraft(AircraftType.B57, "B-57", AircraftRole.Bomber, 3, 2, 1400, 160, air: 1, ground: 5, bombing: 10, range: 5);
 
-            Add(FacilityType.Hangar, "격납고", "격", 150, 1, false, effect: "주둔 편대 2 (3단계)");
+            Add(FacilityType.Hangar, "격납고", "격", 150, 1, false, effect: "주둔 편대 2");
             Add(FacilityType.Runway, "활주로", "활", 100, 1, false, effect: "직선 연속 길이 = 운용 기체 크기");
-            Add(FacilityType.Barracks, "병영", "병", 150, 1, true, effect: "지상군 고용 (6단계)");
-            Add(FacilityType.AntiAir, "대공포", "대", 120, 1, true, effect: "거점 방어 (5단계)");
-            Add(FacilityType.Maintenance, "정비소", "정", 250, 2, true, effect: "기체 수리·티어 (3단계)");
+            Add(FacilityType.Barracks, "병영", "병", 150, 1, true, effect: "지상군 고용");
+            Add(FacilityType.AntiAir, "대공포", "대", 120, 1, true, effect: "거점 방어");
+            Add(FacilityType.Maintenance, "정비소", "정", 250, 2, true, effect: "기체 수리·티어");
             Add(FacilityType.Radar, "레이더", "레", 200, 2, true, effect: "이 거점 시야 +등급칸 (기본: 영역 +1)");
-            Add(FacilityType.Depot, "보급창고", "보", 150, 2, false, effect: "출격 비용 할인·작전 반경 (4단계)");
-            Add(FacilityType.Entertainment, "유흥가", "유", 200, 2, true, effect: "급여 환수·피로 회복 (3단계)");
+            Add(FacilityType.Depot, "보급창고", "보", 150, 2, false, effect: "출격 비용 할인·작전 반경");
+            Add(FacilityType.Entertainment, "유흥가", "유", 200, 2, true, effect: "급여 환수·피로 회복");
             Add(FacilityType.Refinery, "정유시설", "석", 300, 2, true, SiteRequirement.Oil, 80, "수입 +80 × 등급");
             Add(FacilityType.Mine, "광산", "광", 250, 2, true, SiteRequirement.Mountain, 50, "수입 +50 × 등급");
             Add(FacilityType.Armory, "무기고·개조 공방", "무", 300, 3, false, effect: "부품 개조·무장 관리");
-            Add(FacilityType.Sam, "SAM", "S", 350, 3, true, effect: "거점 방어 (5단계)");
-            Add(FacilityType.Finance, "금융", "금", 500, 4, true, effect: "보유 자금 × 2% × 등급");
+            Add(FacilityType.Sam, "SAM", "S", 350, 3, true, effect: "거점 방어");
+            Add(FacilityType.Finance, "금융", "금", 500, 4, true, effect: "보유 자금 × 금융 이율 × 등급");
         }
 
         void Add(FacilityType type, string name, string shortName, int cost, int unlock, bool graded,

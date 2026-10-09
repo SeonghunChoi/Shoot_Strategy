@@ -25,7 +25,7 @@ namespace Prototype.Strategy.Tests
         [Test]
         public void StartingSetup_MatchesPlan()
         {
-            Assert.AreEqual(1000, _w.Funds);
+            Assert.AreEqual(_bal.StartingFunds, _w.Funds);
             Assert.AreEqual(7, _w.TerritoryOf(_coast).Count());
             Assert.AreEqual(3, _w.TerritoryOf(_south).Count());
             Assert.AreEqual(2, BaseRules.RunwayLength(_w, _coast));
@@ -151,8 +151,8 @@ namespace Prototype.Strategy.Tests
         {
             var bal = new Balance();
             var w = World.Create(1, bal);
-            // 영역 10칸 × 10 = 100, 급여 네임드 80 + 일반 40 × 3 = 200 → 순 0 (의도한 시작 상태)
-            Assert.AreEqual(bal.HqBudget - 100 - 200, Economy.Net(Economy.Forecast(w, bal)));
+            // 영역 10칸 × 유지비, 급여 네임드 80 + 일반 40 × 3 = 200
+            Assert.AreEqual(bal.HqBudget - 10 * bal.UpkeepPerHex - 200, Economy.Net(Economy.Forecast(w, bal)));
         }
 
         [Test]
@@ -160,8 +160,9 @@ namespace Prototype.Strategy.Tests
         {
             var bal = new Balance();
             var w = World.Create(1, bal);
+            var net = Economy.Net(Economy.Forecast(w, bal));
             var report = Economy.EndTurn(w, bal);
-            Assert.AreEqual(1000, w.Funds);
+            Assert.AreEqual(bal.StartingFunds + net, w.Funds);
             Assert.AreEqual(2, w.Turn);
             Assert.AreEqual(1, report.Turn);
         }

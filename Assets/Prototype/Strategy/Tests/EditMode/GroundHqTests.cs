@@ -143,11 +143,12 @@ namespace Prototype.Strategy.Tests
         [Test]
         public void Budget_ScalesWithTrust()
         {
-            Assert.AreEqual(300, HqRules.Budget(_w, _bal));
+            // 예산 = 기준 × (0.5 + 신뢰도/100): 신뢰도 50이면 기준 그대로
+            Assert.AreEqual(_bal.HqBudget, HqRules.Budget(_w, _bal));
             _w.Trust = 100;
-            Assert.AreEqual(450, HqRules.Budget(_w, _bal));
+            Assert.AreEqual(_bal.HqBudget * 3 / 2, HqRules.Budget(_w, _bal));
             _w.Trust = 0;
-            Assert.AreEqual(150, HqRules.Budget(_w, _bal));
+            Assert.AreEqual(_bal.HqBudget / 2, HqRules.Budget(_w, _bal));
         }
 
         [Test]

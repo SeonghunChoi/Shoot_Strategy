@@ -335,7 +335,7 @@ namespace Prototype.Strategy.Rules
                 enemyBase.AntiAir = Math.Min(enemyBase.AntiAir, groups[0].Strength);
                 enemyBase.Structures = groups[1].Strength;
                 report.Effect = $"{enemyBase.Name} 대공 {enemyBase.AntiAir} · 시설 {enemyBase.Structures}" +
-                                (enemyBase.Structures == 0 ? " — 시설 전파 (점령 가능, 6단계)" : "");
+                                (enemyBase.Structures == 0 ? " — 시설 전파 (점령 가능)" : "");
                 report.Reward = (int)(bal.BountyBase * report.DestructionRate);
             }
             w.Funds += report.Reward;

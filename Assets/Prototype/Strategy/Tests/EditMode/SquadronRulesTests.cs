@@ -100,7 +100,8 @@ namespace Prototype.Strategy.Tests
             Assert.AreEqual(35, a.Damage);
             Assert.AreEqual(60, p.Fatigue);
             Assert.IsTrue(report.Lines.Any(l => l.Label.StartsWith("기체 수리")));
-            Assert.AreEqual(fundsBefore - cost, _w.Funds); // 순 0 + 수리비
+            var baseNet = _bal.HqBudget - 10 * _bal.UpkeepPerHex - 200; // 예산 − 영역 10칸 유지비 − 급여
+            Assert.AreEqual(fundsBefore + baseNet - cost, _w.Funds);
         }
 
         [Test]

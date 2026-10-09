@@ -636,7 +636,7 @@ namespace Prototype.Strategy
             }
 
             var gaps = SortieRules.DefenseGaps(w).ToList();
-            if (gaps.Count > 0) GUILayout.Label($"방어 공백: {string.Join(", ", gaps.Select(b => b.Name))} — 편대가 모두 출격 (자동 요격 없음, 5단계)", _red);
+            if (gaps.Count > 0) GUILayout.Label($"방어 공백: {string.Join(", ", gaps.Select(b => b.Name))} — 편대가 모두 출격 (그 턴 적이 와도 요격 없음)", _red);
 
             GUILayout.Space(4);
             ActionButton($"출격 실행  ({w.SortiePlan.Count}건, 순서대로 자동 정산)", w.SortiePlan.Count == 0 ? "계획 없음" : null, _boot.ExecuteSorties);
