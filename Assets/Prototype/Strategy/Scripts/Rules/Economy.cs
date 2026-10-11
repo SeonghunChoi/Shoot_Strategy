@@ -13,6 +13,7 @@ namespace Prototype.Strategy.Rules
 
             var refinery = 0;
             var mine = 0;
+            var financeFlat = 0;
             var finance = 0;
             foreach (var (hex, f) in w.Facilities)
             {
@@ -23,12 +24,14 @@ namespace Prototype.Strategy.Rules
                     case FacilityType.Refinery: refinery += def.IncomePerGrade * f.Grade; break;
                     case FacilityType.Mine: mine += def.IncomePerGrade * f.Grade; break;
                     case FacilityType.Finance:
+                        financeFlat += bal.FinanceFlatPerGrade * f.Grade;
                         if (w.Funds > 0) finance += (int)(w.Funds * bal.FinanceRatePerGrade * f.Grade);
                         break;
                 }
             }
             if (refinery > 0) lines.Add(new BudgetLine { Label = "정유시설", Amount = refinery });
             if (mine > 0) lines.Add(new BudgetLine { Label = "광산", Amount = mine });
+            if (financeFlat > 0) lines.Add(new BudgetLine { Label = "금융 수입", Amount = financeFlat });
             if (finance > 0) lines.Add(new BudgetLine { Label = "금융 이자", Amount = finance });
 
             var refund = SquadronRules.EntertainmentRefund(w, bal);

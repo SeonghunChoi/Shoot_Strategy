@@ -147,6 +147,28 @@ namespace Prototype.Strategy.Tests
     public class EconomyTests
     {
         [Test]
+        public void Finance_FlatPlusInterest_UpgradeRaisesNet()
+        {
+            var bal = new Balance();
+            var w = World.Create(1, bal);
+            var coast = w.Bases[0];
+            var h = w.TerritoryOf(coast).First(x => x != coast.Hex && !w.Facilities.ContainsKey(x));
+            var f = new Facility { Type = FacilityType.Finance, Grade = 2 };
+            w.Facilities[h] = f;
+            w.Funds = 2000;
+
+            var lines = Economy.Forecast(w, bal);
+            Assert.AreEqual(bal.FinanceFlatPerGrade * 2, lines.Single(l => l.Label == "금융 수입").Amount);
+            Assert.AreEqual((int)(2000 * bal.FinanceRatePerGrade * 2), lines.Single(l => l.Label == "금융 이자").Amount);
+
+            // 예전에는 자금 2000에서 2→3등급(비용 750)을 올리면 이자 120 → 112로 줄었다. 고정 수입으로 늘어나야 한다
+            var before = Economy.Net(lines);
+            BaseRules.UpgradeFacility(w, bal, h);
+            Assert.AreEqual(3, f.Grade);
+            Assert.Greater(Economy.Net(Economy.Forecast(w, bal)), before);
+        }
+
+        [Test]
         public void Forecast_IsBudgetMinusUpkeep()
         {
             var bal = new Balance();

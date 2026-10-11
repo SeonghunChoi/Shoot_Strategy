@@ -61,6 +61,9 @@ namespace Prototype.Strategy.Rules
         public int BankruptTurns = 3;
         [Tune("경제", "금융 이율 / 등급", 0f, 0.1f)]
         public float FinanceRatePerGrade = 0.03f;
+        /// <summary>금융 시설 고정 수입 (등급마다). 이자는 자금에 따라 변하므로 등급 투자가 확실히 수지를 늘리도록.</summary>
+        [Tune("경제", "금융 고정 수입 / 등급", 0f, 300f)]
+        public int FinanceFlatPerGrade = 60;
         [Tune("거점·시설", "시설 등급 상승 비용 계수", 0.1f, 2f)]
         public float FacilityUpgradeFactor = 0.5f; // 비용 = 건설비 × 다음 등급 × 계수
         public int MaxFacilityGrade = 4;
@@ -301,7 +304,7 @@ namespace Prototype.Strategy.Rules
             Add(FacilityType.Mine, "광산", "광", 250, 2, true, SiteRequirement.Mountain, 50, "수입 +50 × 등급");
             Add(FacilityType.Armory, "무기고·개조 공방", "무", 300, 3, false, effect: "부품 개조·무장 관리");
             Add(FacilityType.Sam, "SAM", "S", 350, 3, true, effect: "거점 방어");
-            Add(FacilityType.Finance, "금융", "금", 500, 4, true, effect: "보유 자금 × 금융 이율 × 등급");
+            Add(FacilityType.Finance, "금융", "금", 500, 4, true, effect: "등급 × 고정 수입 + 보유 자금 × 이율 × 등급");
         }
 
         void Add(FacilityType type, string name, string shortName, int cost, int unlock, bool graded,
