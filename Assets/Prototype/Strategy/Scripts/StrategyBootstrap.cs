@@ -29,6 +29,9 @@ namespace Prototype.Strategy
         static readonly Color OutpostColor = new(0.9f, 0.9f, 0.5f, 0.4f);
         static readonly Color GroundColor = new(0.45f, 0.9f, 0.35f, 0.45f);
 
+        /// <summary>테스트 빌드 구분 (두 버전을 함께 배포해 비교).</summary>
+        public const string Variant = "체공판 (A+B)";
+
         [SerializeField] ulong seed = 20260930;
 
         public ulong Seed => seed;
