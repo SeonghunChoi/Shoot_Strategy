@@ -106,6 +106,9 @@ namespace Prototype.Strategy.Rules
 
         static void ActUnit(World w, Balance bal, Faction f, EnemyUnit u)
         {
+            // 비행 중 편대와 맞닿아 있으면 먼저 교전을 걸고 이번 턴 행동 끝
+            if (FlightContact(w, bal, u)) return;
+
             // 인접한 아군 지상군(출동 중)이 있으면 이동하지 않고 교전
             var engaged = w.GroundUnits.FirstOrDefault(g => g.Deployed && Hex.Distance(g.Hex, u.Hex) <= 1);
             if (engaged != null)
@@ -128,7 +131,15 @@ namespace Prototype.Strategy.Rules
             var steps = StepsThisTurn(w, bal, f, u.Hex, g, f.Stance, out _);
             if (steps.Count > 0)
             {
-                u.Hex = steps[^1];
+                // 한 칸씩 이동하며 기록 (맵 재생). 비행 중 편대와 맞닿으면 교전을 걸고 멈춘다
+                var trace = w.AddTrace(TraceKind.Enemy, u.Owner, u.Id, u.Name, new[] { u.Hex }, Vision.IsVisible(w, bal, u.Hex));
+                foreach (var step in steps)
+                {
+                    u.Hex = step;
+                    trace.Path.Add(step);
+                    trace.Seen.Add(Vision.IsVisible(w, bal, step));
+                    if (FlightContact(w, bal, u)) return;
+                }
                 if (Vision.IsVisible(w, bal, u.Hex)) w.EnemyEvents.Add($"{u.Name} 이동 → {u.Hex.ToOffset()}");
             }
 
@@ -150,6 +161,26 @@ namespace Prototype.Strategy.Rules
                     return home != null && u.Hex != home.Hex ? home.Hex : null;
             }
             return null;
+        }
+
+        /// <summary>
+        /// 비행 중 편대와 맞닿으면(1칸 안) 적 부대가 먼저 교전을 건다 (C안: 적과 같은 조건). 교전한 부대는 이번 턴 행동 끝.
+        /// 같은 교전 계산을 쓰고, 편대는 날고 있는 기체로 싸운다.
+        /// </summary>
+        static bool FlightContact(World w, Balance bal, EnemyUnit u)
+        {
+            var s = w.Squadrons.FirstOrDefault(x => x.AirHex is { } ah && Hex.Distance(ah, u.Hex) <= 1 && FlightRules.Flyers(w, x).Count > 0);
+            if (s == null) return false;
+            var at = s.AirHex.Value;
+            var rep = SortieRules.Resolve(w, bal, s, u.Hex, u);
+            rep.Order = w.Debriefs.Count + 1;
+            w.Debriefs.Add(rep);
+            w.AddEvent(at, "적 선공");
+            w.EnemyEvents.Add($"{u.Name} → 비행 중인 {s.Name} 공격: {rep.Effect}");
+            w.Log("비행피습", $"{u.Name} → {s.Name} @ {at.ToOffset()} · {rep.Rounds}R · 파괴율 {rep.DestructionRate:0.00}");
+            FlightRules.CheckGrounded(w, s);
+            u.Goal = null;
+            return true;
         }
 
         /// <summary>이번 턴에 지나갈 칸들 (이동력 한도, 남의 거점 칸 앞에서 멈춤, 공세면 목표 인접에서 멈춤). rest = 남은 경로.</summary>
@@ -223,7 +254,7 @@ namespace Prototype.Strategy.Rules
             {
                 var value = b.Grade * 10f + BaseRules.FacilityCount(w, b) * 3f;
                 var defense = FacilityDefense(w, bal, b);
-                if (FactionSees(w, bal, f, b.Hex)) defense += (int)(w.SquadronsAt(b).Sum(s => s.AircraftIds.Count) * bal.KnownAircraftDefenseWeight);
+                if (FactionSees(w, bal, f, b.Hex)) defense += (int)(w.SquadronsAt(b).Where(s => s.AirHex == null).Sum(s => s.AircraftIds.Count) * bal.KnownAircraftDefenseWeight);
                 var dist = Hex.Distance(u.Hex, b.Hex);
                 var score = value / (1f + dist * 0.3f) / (1f + defense * 0.05f);
                 if (score > bestScore)
@@ -239,6 +270,7 @@ namespace Prototype.Strategy.Rules
 
         static void Attack(World w, Balance bal, Faction f, EnemyUnit u, Base target)
         {
+            w.AddEvent(target.Hex, "피습");
             var rep = new InterceptReport
             {
                 BaseName = target.Name,
@@ -248,7 +280,7 @@ namespace Prototype.Strategy.Rules
             };
 
             // 1) 주둔 편대 자동 요격 (이번 턴 출격한 편대 제외, 재배치해 온 편대는 참가): 4단계 리졸버와 같은 라운드 교전
-            var squadrons = w.SquadronsAt(target).Where(s => !s.SortiedThisTurn).ToList();
+            var squadrons = w.SquadronsAt(target).Where(s => !s.SortiedThisTurn && s.AirHex == null).ToList();
             var flying = squadrons.SelectMany(s => SortieRules.SortieAircraft(w, bal, s)).ToList();
             rep.SquadronsEngaged = squadrons.Count(s => SortieRules.SortieAircraft(w, bal, s).Any());
             if (flying.Count == 0) rep.Log.Add("요격 편대 없음 — 대공 시설만으로 방어");
@@ -356,6 +388,14 @@ namespace Prototype.Strategy.Rules
 
             foreach (var s in w.SquadronsAt(target).ToList())
             {
+                // 비행 중 편대는 하늘에 남는다: 다른 아군 거점으로 소속만 옮기고, 없으면 그대로 (착륙할 곳을 찾아야 함)
+                if (s.AirHex != null)
+                {
+                    var home = w.Bases.Where(b => b.Owner == World.Player && b.Id != target.Id).OrderBy(b => Hex.Distance(b.Hex, s.AirHex.Value)).FirstOrDefault();
+                    if (home != null) s.BaseId = home.Id;
+                    rep.Log.Add($"   {s.Name} 비행 중 — 소속 거점을 잃음");
+                    continue;
+                }
                 var refuge = w.Bases.Where(b => b.Owner == World.Player && b.Id != target.Id)
                     .Where(b => w.SquadronsAt(b).Count() < SquadronRules.HangarCapacity(w, bal, b))
                     .Where(b => s.AircraftIds.All(id => SquadronRules.CanOperate(w, bal, b, w.AircraftById(id).Type) == null))
@@ -403,6 +443,7 @@ namespace Prototype.Strategy.Rules
         /// <summary>적 부대 ↔ 출동 중 아군 지상군 수치 교전 (세력 간 교전과 같은 방식).</summary>
         static void EngageGround(World w, Balance bal, EnemyUnit u, GroundUnit g)
         {
+            w.AddEvent(g.Hex, "지상 교전");
             var dealt = Math.Min(bal.FactionCombatMaxDamage, g.Strength / 2);
             var taken = Math.Min(bal.FactionCombatMaxDamage, u.Strength / 2);
             Damage(u, dealt);

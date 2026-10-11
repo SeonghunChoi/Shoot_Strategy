@@ -187,6 +187,17 @@ namespace Prototype.Strategy.Rules
         [Tune("출격·자동 정산", "경험치: 편대 공유 비율", 0f, 1f)]
         public float SortieXpShare = 0.3f;
         /// <summary>숙련도 상승에 필요한 경험치 = 현재 숙련도 × 이 값.</summary>
+        /// <summary>C안 다턴 비행. 연료 = 작전 반경 × 2 + 예비, 한 칸 1, 하늘에서 턴을 마칠 때 1.</summary>
+        [Tune("비행", "출격 예비 연료", 0f, 6f)]
+        public int ReserveFuel = 1;
+        [Tune("비행", "하늘에서 턴을 마칠 때 연료", 0f, 4f)]
+        public int IdleFuelPerTurn = 1;
+        [Tune("비행", "비행 피로 / 턴", 0f, 50f)]
+        public int FlightFatigue = 15;
+        [Tune("비행", "비행 중 교전 피로", 0f, 50f)]
+        public int FlightEngageFatigue = 15;
+        [Tune("비행", "비행 편대 시야", 0f, 4f)]
+        public int FlightVisionRange = 2;
         [Tune("출격·자동 정산", "숙련도 상승 경험치 / 숙련", 20f, 300f)]
         public int XpPerSkill = 100;
         public int MaxReturnTurns = 3;
@@ -287,10 +298,10 @@ namespace Prototype.Strategy.Rules
 
         public Balance()
         {
-            AddAircraft(AircraftType.F5, "F-5", AircraftRole.Fighter, 1, 1, 400, 80, air: 8, ground: 3, bombing: 1, range: 3);
-            AddAircraft(AircraftType.A4, "A-4", AircraftRole.Attacker, 1, 1, 450, 100, air: 4, ground: 8, bombing: 3, range: 3);
-            AddAircraft(AircraftType.F4, "F-4", AircraftRole.Multirole, 2, 2, 900, 120, air: 7, ground: 6, bombing: 4, range: 4);
-            AddAircraft(AircraftType.B57, "B-57", AircraftRole.Bomber, 3, 2, 1400, 160, air: 1, ground: 5, bombing: 10, range: 5);
+            AddAircraft(AircraftType.F5, "F-5", AircraftRole.Fighter, 1, 1, 400, 80, air: 8, ground: 3, bombing: 1, range: 3, speed: 3);
+            AddAircraft(AircraftType.A4, "A-4", AircraftRole.Attacker, 1, 1, 450, 100, air: 4, ground: 8, bombing: 3, range: 3, speed: 3);
+            AddAircraft(AircraftType.F4, "F-4", AircraftRole.Multirole, 2, 2, 900, 120, air: 7, ground: 6, bombing: 4, range: 4, speed: 4);
+            AddAircraft(AircraftType.B57, "B-57", AircraftRole.Bomber, 3, 2, 1400, 160, air: 1, ground: 5, bombing: 10, range: 5, speed: 3);
 
             Add(FacilityType.Hangar, "격납고", "격", 150, 1, false, effect: "주둔 편대 2");
             Add(FacilityType.Runway, "활주로", "활", 100, 1, false, effect: "직선 연속 길이 = 운용 기체 크기");
@@ -318,12 +329,12 @@ namespace Prototype.Strategy.Rules
         }
 
         void AddAircraft(AircraftType type, string name, AircraftRole role, int size, int tier, int price, int hp,
-            int air, int ground, int bombing, int range)
+            int air, int ground, int bombing, int range, int speed)
         {
             Aircraft[type] = new AircraftDef
             {
                 Type = type, Name = name, Role = role, Size = size, Tier = tier, Price = price, Hp = hp,
-                Air = air, Ground = ground, Bombing = bombing, Range = range,
+                Air = air, Ground = ground, Bombing = bombing, Range = range, Speed = speed,
             };
         }
 

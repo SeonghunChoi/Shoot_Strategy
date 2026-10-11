@@ -89,7 +89,7 @@ namespace Prototype.Strategy.Rules
         }
 
         /// <summary>빈 편대 해산.</summary>
-        public static string CanDisband(World w, Squadron s) => s.AircraftIds.Count > 0 ? "기체가 남아 있음" : null;
+        public static string CanDisband(World w, Squadron s) => s.AirHex != null ? "비행 중" : s.AircraftIds.Count > 0 ? "기체가 남아 있음" : null;
 
         public static void Disband(World w, Squadron s)
         {
@@ -99,6 +99,7 @@ namespace Prototype.Strategy.Rules
 
         public static string CanAttachAircraft(World w, Balance bal, Squadron s, Aircraft a)
         {
+            if (s.AirHex != null) return "비행 중";
             if (a.SquadronId != 0) return "다른 편대 소속";
             if (s.AircraftIds.Count >= bal.SquadronMaxSize) return "편대 정원";
             return CanOperate(w, bal, w.BaseById(s.BaseId), a.Type);
@@ -147,6 +148,7 @@ namespace Prototype.Strategy.Rules
         {
             if (to.Owner != World.Player) return "아군 거점이 아님";
             if (to.Id == s.BaseId) return "이미 주둔 중";
+            if (s.AirHex != null) return "비행 중 (아군 거점에 착륙하면 소속이 바뀜)";
             if (s.MovedThisTurn) return "이번 턴 이미 재배치함";
             if (s.SortiedThisTurn) return "이번 턴 출격함";
             if (w.SortiePlan.Any(p => p.SquadronId == s.Id)) return "출격 계획에 들어 있음";
@@ -337,18 +339,21 @@ namespace Prototype.Strategy.Rules
         {
             foreach (var s in w.Squadrons)
             {
+                s.LandedThisTurn = false;
                 var b = w.BaseById(s.BaseId);
                 var maint = MaintenanceGrade(w, b);
                 var rate = maint > 0 ? maint * bal.RepairPerMaintenanceGrade : bal.RepairWithoutMaintenance;
                 var ent = EntertainmentGrade(w, b);
+                var airborne = s.AirHex != null; // 비행 중 편대는 수리·피로 회복 없음
                 foreach (var id in s.AircraftIds)
                 {
                     var a = w.AircraftById(id);
-                    a.Damage = Math.Max(0, a.Damage - rate);
+                    if (!airborne) a.Damage = Math.Max(0, a.Damage - rate);
                     var p = w.PilotById(a.PilotId);
-                    if (p != null && !s.SortiedThisTurn)
+                    if (p != null && !s.SortiedThisTurn && !airborne)
                         p.Fatigue = Math.Max(0, p.Fatigue - bal.FatigueRecovery - ent * bal.FatigueRecoveryPerEntertainmentGrade);
                 }
+                if (airborne) FlightRules.EndTurnInAir(w, bal, s);
                 s.SortiedThisTurn = false;
                 s.MovedThisTurn = false;
             }

@@ -28,6 +28,8 @@ namespace Prototype.Strategy
         public InputAction TabPrev { get; }
         public InputAction TuningToggle { get; }
         public InputAction TabNext { get; }
+        /// <summary>이동 재생 건너뛰기 (클릭·패드 South·Esc도 건너뜀).</summary>
+        public InputAction Skip { get; }
 
         public StrategyControls()
         {
@@ -64,6 +66,7 @@ namespace Prototype.Strategy
             TabPrev = Button("TabPrev", "<Keyboard>/q", "<Gamepad>/leftShoulder");
             TuningToggle = Button("TuningToggle", "<Keyboard>/f2");
             TabNext = Button("TabNext", "<Keyboard>/e", "<Gamepad>/rightShoulder");
+            Skip = Button("Skip", "<Keyboard>/space");
 
             _map.Enable();
         }

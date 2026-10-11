@@ -59,6 +59,8 @@ namespace Prototype.Strategy.Rules
         public readonly List<string> Log = new();
         public readonly List<AircraftOutcome> Aircraft = new();
         public string Effect;
+        /// <summary>적 부대가 비행 중 편대에 먼저 건 교전 (적 턴).</summary>
+        public bool EnemyInitiated;
     }
 
     /// <summary>
@@ -98,6 +100,8 @@ namespace Prototype.Strategy.Rules
         public static string CanSortie(World w, Balance bal, Squadron s)
         {
             if (s.MovedThisTurn) return "이번 턴 재배치함";
+            if (s.AirHex != null) return "비행 중";
+            if (s.LandedThisTurn) return "착륙한 턴 — 출격 불가";
             if (s.SortiedThisTurn) return "이번 턴 출격함";
             if (w.SortiePlan.Any(p => p.SquadronId == s.Id)) return "이미 계획됨";
             if (!SortieAircraft(w, bal, s).Any()) return "출격 가능한 기체 없음";
@@ -159,6 +163,7 @@ namespace Prototype.Strategy.Rules
 
         public static void Unplan(World w, SortiePlan p) => w.SortiePlan.Remove(p);
 
+
         public static void Reorder(World w, SortiePlan p, int delta)
         {
             var i = w.SortiePlan.IndexOf(p);
@@ -184,6 +189,7 @@ namespace Prototype.Strategy.Rules
         public static List<SortieReport> ExecuteAll(World w, Balance bal)
         {
             w.Debriefs.Clear();
+            w.Traces.Clear();
             var order = 1;
             foreach (var plan in w.SortiePlan.ToList())
             {
@@ -200,10 +206,16 @@ namespace Prototype.Strategy.Rules
                     });
                     continue;
                 }
+                var home = w.BaseById(s.BaseId).Hex;
                 var report = Resolve(w, bal, s, plan.Target);
                 report.Order = order++;
                 w.Debriefs.Add(report);
                 w.SortiedTargets.Add(plan.Target);
+
+                // 맵 재생: 출발 → 교전 → 귀환 (한 턴 왕복 출격 — C안 화면은 FlightRules를 쓰고, 이 경로는 테스트·호환용)
+                w.AddTrace(TraceKind.Squadron, World.Player, s.Id, s.Name, Hex.Line(home, plan.Target));
+                w.AddEvent(plan.Target, report.Exit == ExitReason.Retreat ? "철수" : $"교전 {report.Rounds}R");
+                if (report.Aircraft.Any(o => !o.ShotDown)) w.AddTrace(TraceKind.Squadron, World.Player, s.Id, s.Name, Hex.Line(plan.Target, home));
                 var downs = report.Aircraft.Where(o => o.ShotDown).Select(o => $"{o.AircraftName}:{o.Fate}/{o.PilotFate}");
                 w.Log("출격", $"순서 {report.Order} · {report.SquadronName} → {report.TargetName} · {MissionName(report.Mission)}" +
                               $" · {(report.OverEnemyTerritory ? "적 영역" : "아군·중립")}{(report.OverlapBonus ? " · 겹침 보정" : "")}" +
@@ -214,24 +226,31 @@ namespace Prototype.Strategy.Rules
             return w.Debriefs;
         }
 
-        public static SortieReport Resolve(World w, Balance bal, Squadron s, Hex target)
+        /// <summary>
+        /// 교전 정산. 비행 중 편대(C안)면 비용 없이 날고 있는 기체로 싸우고 교전 피로를 받는다.
+        /// attacker가 있으면 적 부대가 먼저 건 교전 (적 턴).
+        /// </summary>
+        public static SortieReport Resolve(World w, Balance bal, Squadron s, Hex target, EnemyUnit attacker = null)
         {
             var rng = w.Rng;
-            var mission = MissionAt(w, target) ?? MissionType.UnitAttack;
-            var unit = w.EnemyUnitAt(target);
-            var enemyBase = w.BaseAt(target);
+            var inFlight = s.AirHex != null;
+            var intercept = attacker != null;
+            var mission = intercept ? MissionType.UnitAttack : MissionAt(w, target) ?? MissionType.UnitAttack;
+            var unit = intercept ? attacker : w.EnemyUnitAt(target);
+            var enemyBase = intercept ? null : w.BaseAt(target);
             var report = new SortieReport
             {
                 SquadronName = s.Name,
                 Mission = mission,
                 Target = target,
-                TargetName = TargetName(w, target),
+                TargetName = intercept ? $"{unit.Name} (적 선공)" : TargetName(w, target),
                 OverEnemyTerritory = w.BaseOf(target) is { } tb && tb.Owner != World.Player,
-                OverlapBonus = w.SortiedTargets.Any(t => AreasOverlap(t, target)),
+                OverlapBonus = !intercept && w.SortiedTargets.Any(t => AreasOverlap(t, target)),
+                EnemyInitiated = intercept,
             };
 
             // 비용
-            report.Cost = Cost(w, bal, s);
+            report.Cost = inFlight ? 0 : Cost(w, bal, s);
             w.Funds -= report.Cost;
 
             // 적 교전 그룹 (기술 설계 5.4): 부대 공격은 공중 → 지상, 거점 폭격은 대공 → 시설
@@ -252,7 +271,7 @@ namespace Prototype.Strategy.Rules
             var totalInitial = groups.Sum(g => g.Initial);
 
             // 출격 기체 (순서 = 편대 순서)
-            var flying = SortieAircraft(w, bal, s).ToList();
+            var flying = inFlight ? FlightRules.Flyers(w, s) : SortieAircraft(w, bal, s).ToList();
             var outcomes = flying.ToDictionary(a => a.Id, a => new AircraftOutcome
             {
                 AircraftId = a.Id,
@@ -262,7 +281,7 @@ namespace Prototype.Strategy.Rules
                 Fate = "—",
                 PilotFate = "—",
             });
-            report.Log.Add($"출격 {flying.Count}기, 비용 {report.Cost}. 적: {string.Join(", ", groups.Select(g => $"{g.Name} {g.Initial}"))}");
+            report.Log.Add($"{(intercept ? "적 선공 — 비행 중 교전" : inFlight ? "비행 중 교전" : "출격")} {flying.Count}기, 비용 {report.Cost}. 적: {string.Join(", ", groups.Select(g => $"{g.Name} {g.Initial}"))}");
 
             var round = 0;
             while (round < bal.MaxRounds)
@@ -348,7 +367,7 @@ namespace Prototype.Strategy.Rules
                 o.DamageAfter = a?.Damage ?? 100;
                 var p = w.Pilots.FirstOrDefault(x => x.Name == o.PilotName);
                 if (p == null) continue;
-                p.Fatigue = Math.Min(100, p.Fatigue + bal.SortieFatigue);
+                p.Fatigue = Math.Min(100, p.Fatigue + (inFlight ? bal.FlightEngageFatigue : bal.SortieFatigue));
                 o.XpBase = bal.SortieBaseXp;
                 o.XpCombat = o.Rounds * bal.XpPerRound;
                 o.XpShare = (int)Math.Round((squadronCombatXp - o.XpCombat) * bal.SortieXpShare);
@@ -362,9 +381,12 @@ namespace Prototype.Strategy.Rules
                 }
                 report.Aircraft.Add(o);
             }
-            s.SortiedThisTurn = true;
-            s.Refuel = false; // 급유는 출격 1회분
-            w.Stats.Sorties++;
+            if (!inFlight)
+            {
+                s.SortiedThisTurn = true;
+                s.Refuel = false; // 급유는 출격 1회분
+                w.Stats.Sorties++;
+            }
             return report;
         }
 

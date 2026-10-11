@@ -59,11 +59,15 @@ namespace Prototype.Strategy.Rules
             var net = Net(lines);
             w.Funds += net;
             w.EnemyEvents.Clear();
+            w.Traces.Clear();
+            // 비행 중 편대가 있으면 적 선공 디브리핑을 새로 쌓는다
+            if (w.Squadrons.Any(s => s.AirHex != null)) w.Debriefs.Clear();
             // 턴 순서: 아군 지상군 이동 → 적 턴 → 편대 회복. 이번 턴 출격한 편대는 요격 불가
             GroundRules.MovePhase(w, bal);
             if (w.GameOver == null) EnemyTurn.Run(w, bal);
-            SquadronRules.EndTurn(w, bal);
+            // 목격 기록은 적 턴이 끝난 순간의 시야로 (출격 지역·비행 편대 포함) — 불시착 처리 전에
             Vision.UpdateSightings(w, bal);
+            SquadronRules.EndTurn(w, bal);
             HqRules.EndTurn(w, bal);
             w.DeficitStreak = w.Funds < 0 ? w.DeficitStreak + 1 : 0;
 

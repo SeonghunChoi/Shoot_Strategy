@@ -68,14 +68,27 @@ namespace Prototype.Strategy
             _padIndex = 0;
 
             DrawMapLabels();
+            // 이동 재생 중에는 패널·상단 바를 누를 수 없다
+            var wasEnabled = GUI.enabled;
+            if (_boot.Playback.Playing) GUI.enabled = false;
             DrawSidePanel();
             DrawLog();
             if (_showHelp) DrawHelp();
             DrawTopBar(); // 수지 내역 툴팁이 다른 패널 위에 오도록 마지막에
+            GUI.enabled = wasEnabled;
+            if (_boot.Playback.Playing) DrawPlaybackBanner();
             if (_boot.ShowDebrief) DrawDebrief();
             if (_boot.ShowEnemyReport) DrawEnemyReport();
             if (_boot.ShowHq) DrawHq();
             if (_boot.World.GameOver != null) DrawGameOver();
+        }
+
+        void DrawPlaybackBanner()
+        {
+            var width = 360f;
+            var r = new Rect((Screen.width - SideWidth - width) * 0.5f, BarHeight + 12f, width, 30f);
+            ProtoGui.Panel(r, opaque: true);
+            GUI.Label(new Rect(r.x, r.y + 5f, r.width, 22f), "이동 재생 중 — 클릭 · Space · South로 건너뛰기", _mapLabelSmall);
         }
 
         void EnsureStyles()
@@ -119,7 +132,7 @@ namespace Prototype.Strategy
             var oldBg = GUI.backgroundColor;
             var oldEnabled = GUI.enabled;
             if (focused) GUI.backgroundColor = new Color(1f, 0.85f, 0.2f);
-            GUI.enabled = enabled;
+            GUI.enabled = enabled && oldEnabled;
             var pressed = GUILayout.Button(focused ? "▶ " + label : label, style ?? GUI.skin.button);
             if (focused && Event.current.type == EventType.Repaint)
             {
@@ -220,12 +233,12 @@ namespace Prototype.Strategy
 
             foreach (var u in w.EnemyUnits)
             {
-                if (!_boot.Visible.Contains(u.Hex)) continue;
+                if (!_boot.Visible.Contains(u.Hex) || _boot.Playback.Hides(TraceKind.Enemy, u.Id)) continue;
                 var c = HexLayout.ToWorld(u.Hex);
                 MapLabel(c + new Vector2(0f, 0.1f), u.Name, _mapLabelSmall, new Color(1f, 0.75f, 0.7f));
                 MapLabel(c + new Vector2(0f, -0.3f), $"공 {u.Air} 지 {u.Ground}", _mapLabelSmall, new Color(1f, 0.75f, 0.7f));
             }
-            foreach (var gu in w.GroundUnits.Where(x => x.Deployed))
+            foreach (var gu in w.GroundUnits.Where(x => x.Deployed && !_boot.Playback.Hides(TraceKind.Ground, x.Id)))
                 MapLabel(HexLayout.ToWorld(gu.Hex) + new Vector2(0f, -0.35f), $"{gu.Name} {gu.Strength}", _mapLabelSmall, HexMapView.GroundColor);
             foreach (var g in Vision.StaleSightings(w, _boot.Balance))
             {
@@ -245,9 +258,43 @@ namespace Prototype.Strategy
             for (var i = 0; i < w.SortiePlan.Count; i++)
                 MapLabel(HexLayout.ToWorld(w.SortiePlan[i].Target) + new Vector2(0f, 0.55f), $"출격 {i + 1}", _mapLabel, HexMapView.PlanColor);
 
-            if (_boot.TargetPickSquadron != null)
+            // 비행 중 편대 이름·연료
+            foreach (var s in w.Squadrons)
+                if (s.AirHex is { } ah && !_boot.Playback.Hides(TraceKind.Squadron, s.Id))
+                {
+                    var (_, d) = FlightRules.NearestLanding(w, s);
+                    MapLabel(HexLayout.ToWorld(ah) + new Vector2(0f, -0.62f), $"{s.Name} 연료 {s.Fuel}", _mapLabelSmall,
+                        s.Fuel <= d + _boot.Balance.IdleFuelPerTurn ? new Color(1f, 0.5f, 0.45f) : new Color(0.6f, 0.85f, 1f));
+                }
+
+            // 이동 재생 표식의 이름과 교전 글자
+            if (_boot.Playback.Playing)
+                foreach (var t in _boot.Playback.Tokens())
+                {
+                    var tr = t.Trace;
+                    switch (tr.Kind)
+                    {
+                        case TraceKind.Event:
+                            MapLabel(t.Position + new Vector2(0f, 0.75f), tr.Event, _mapLabel, new Color(1f, 0.55f, 0.4f));
+                            break;
+                        case TraceKind.Squadron:
+                            MapLabel(t.Position + new Vector2(0f, -0.62f), tr.Name, _mapLabelSmall, new Color(0.6f, 0.85f, 1f));
+                            break;
+                        case TraceKind.Enemy:
+                            MapLabel(t.Position + new Vector2(0f, 0.1f), tr.Name, _mapLabelSmall, new Color(1f, 0.75f, 0.7f));
+                            break;
+                        case TraceKind.Ground:
+                            MapLabel(t.Position + new Vector2(0f, -0.35f), tr.Name, _mapLabelSmall, HexMapView.GroundColor);
+                            break;
+                    }
+                }
+
+            if (_boot.TargetPickSquadron is { } flier)
                 foreach (var h in _boot.TargetCandidates)
-                    MapLabel(HexLayout.ToWorld(h) + new Vector2(0f, 0.55f), "목표?", _mapLabel, Color.white);
+                {
+                    if (FlightRules.IsAttackTarget(w, flier, h)) MapLabel(HexLayout.ToWorld(h) + new Vector2(0f, 0.55f), "공격?", _mapLabel, Color.white);
+                    else if (w.BaseAt(h) is { Owner: World.Player }) MapLabel(HexLayout.ToWorld(h) + new Vector2(0f, 0.55f), "착륙", _mapLabel, new Color(0.6f, 0.85f, 1f));
+                }
 
             if (_boot.OutpostMode)
                 foreach (var h in _boot.OutpostCandidates)
@@ -536,6 +583,11 @@ namespace Prototype.Strategy
             var rest = bal.FatigueRecovery + SquadronRules.EntertainmentGrade(w, b) * bal.FatigueRecoveryPerEntertainmentGrade;
             GUILayout.Label($"이 거점에서 턴마다 수리 {repair}%{(maint == 0 ? " (정비소 없음)" : "")} · 피로 −{rest}", ProtoGui.Small);
             GUILayout.Label($"작전 반경 {SquadronRules.OperationRadius(w, bal, s, refuel: false)} (가장 짧은 기체 기준 + 설비)  ·  공중급유 시 {SquadronRules.OperationRadius(w, bal, s, refuel: true)}", ProtoGui.Small);
+            if (s.AirHex is { } airAt) GUILayout.Label($"비행 중 ({airAt.ToOffset()}) · 연료 {s.Fuel} — 편성 변경 불가, 기지 요격 불참", _green);
+            else if (s.LandedThisTurn) GUILayout.Label("이번 턴 착륙 — 출격 불가 (기지 요격은 가능)", _red);
+            // 비행 중에는 편성 버튼을 막는다
+            var squadronGuiEnabled = GUI.enabled;
+            if (s.AirHex != null) GUI.enabled = false;
             if (s.MovedThisTurn) GUILayout.Label("이번 턴 재배치함 — 출격 불가, 적 턴에 이 거점에서 요격", _green);
             else if (s.SortiedThisTurn) GUILayout.Label("이번 턴 출격함 — 재배치 불가, 적 턴 요격 불참", _red);
 
@@ -601,6 +653,7 @@ namespace Prototype.Strategy
                         () => { SquadronRules.AttachAircraft(w, sq2, aircraft); _aircraftPickFor = 0; });
                 }
             }
+            GUI.enabled = squadronGuiEnabled;
         }
 
         // ---- 출격 ----
@@ -612,92 +665,65 @@ namespace Prototype.Strategy
 
             if (_boot.TargetPickSquadron is { } picking)
             {
-                GUILayout.Label($"{picking.Name}: 목표 칸을 클릭 / 패드 South", ProtoGui.Bold);
-                GUILayout.Label("흰 '목표?' 칸 = 작전 반경 안의 적. 오른쪽 클릭·Esc·East로 취소", _wrap);
-                PanelButton("목표 선택 취소", _boot.StopTargetPick);
+                GUILayout.Label($"{picking.Name}: 갈 칸을 클릭 / 패드 South", ProtoGui.Bold);
+                GUILayout.Label($"이번에 {FlightRules.Reach(w, bal, picking)}칸까지. '공격?' = 적 부대·거점 (닿으면 바로 교전), '착륙' = 아군 거점, 그 밖의 칸 = 이동만. 오른쪽 클릭·Esc·East로 취소", _wrap);
+                PanelButton("명령 취소", _boot.StopTargetPick);
                 GUILayout.Space(8);
             }
+            if (_boot.FuelWarned)
+                GUILayout.Label("연료가 바닥난 편대가 있습니다 — 이대로 턴을 마치면 불시착(기체 손실). 턴 종료를 다시 누르면 그대로 진행합니다.", _red);
 
-            if (_boot.EndTurnWarned) GUILayout.Label("미실행 출격 계획이 있습니다. 턴 종료를 다시 누르면 계획을 버리고 턴을 마칩니다.", _red);
-            GUILayout.Label($"출격 계획  {w.SortiePlan.Count}건  ·  비용 합계 {SortieRules.PlannedCost(w, bal)}", ProtoGui.Bold);
-            if (w.SortiePlan.Count == 0) GUILayout.Label("아래에서 편대를 골라 목표를 지정하세요", ProtoGui.Small);
-            for (var i = 0; i < w.SortiePlan.Count; i++)
-            {
-                var plan = w.SortiePlan[i];
-                var s = w.SquadronById(plan.SquadronId);
-                GUILayout.Label($"{i + 1}. {s.Name} → {SortieRules.TargetName(w, plan.Target)}  ·  {SortieRules.MissionName(plan.Mission)}  ·  {SortieRules.Cost(w, bal, s)}{(s.Refuel ? "  ·  공중급유" : "")}",
-                    ProtoGui.Small);
-                GUILayout.BeginHorizontal();
-                var p = plan;
-                PanelButton("▲", () => SortieRules.Reorder(w, p, -1), enabled: i > 0);
-                PanelButton("▼", () => SortieRules.Reorder(w, p, 1), enabled: i < w.SortiePlan.Count - 1);
-                PanelButton("제거", () => SortieRules.Unplan(w, p));
-                GUILayout.EndHorizontal();
-            }
+            var gaps = w.Bases.Where(x => x.Owner == World.Player && w.SquadronsAt(x).Any() && w.SquadronsAt(x).All(FlightRules.IsFlying)).ToList();
+            if (gaps.Count > 0) GUILayout.Label($"방어 공백: {string.Join(", ", gaps.Select(x => x.Name))} — 편대가 모두 비행 중 (적이 와도 요격 없음)", _red);
 
-            var gaps = SortieRules.DefenseGaps(w).ToList();
-            if (gaps.Count > 0) GUILayout.Label($"방어 공백: {string.Join(", ", gaps.Select(b => b.Name))} — 편대가 모두 출격 (그 턴 적이 와도 요격 없음)", _red);
-
-            GUILayout.Space(4);
-            ActionButton($"출격 실행  ({w.SortiePlan.Count}건, 순서대로 자동 정산)", w.SortiePlan.Count == 0 ? "계획 없음" : null, _boot.ExecuteSorties);
-
-            GUILayout.Space(10);
-            GUILayout.Label("편대 선택 → 목표 지정", ProtoGui.Bold);
+            GUILayout.Label("편대 — 출격하면 맵 위에서 턴마다 속도만큼 날고, 연료가 떨어지기 전에 아군 거점에 내려야 합니다", _wrap);
             foreach (var s in w.Squadrons.ToList())
             {
-                // 편대마다 한 묶음: 제목 → 상태 → [목표 지정] [공중급유] 버튼 한 줄 → 안내
                 var b = w.BaseById(s.BaseId);
-                var reason = SortieRules.CanSortie(w, bal, s);
-                var targetList = reason == null ? SortieRules.Targets(w, bal, s).ToList() : new List<Hex>();
-                var targets = targetList.Count;
-                // 반경 안의 목표 중 실제로 계획할 수 있는 곳 (자금·같은 목표 중복으로 막히면 그 사유를 보여 준다)
-                var blocked = targetList.Select(h => SortieRules.CanPlan(w, bal, s, h)).ToList();
-                var pickable = blocked.Count(x => x == null);
-                var planned = w.SortiePlan.Any(p => p.SquadronId == s.Id);
                 var sq = s;
-
                 GUILayout.Space(6);
-                GUILayout.Label($"■ {s.Name}  ·  {b.Name}{(s.Refuel ? "  ·  급유 켜짐" : "")}", ProtoGui.Bold);
-                GUILayout.Label($"출격 {SortieRules.SortieAircraft(w, bal, s).Count()}/{s.AircraftIds.Count}기  ·  비용 {SortieRules.Cost(w, bal, s)}  ·  반경 {SquadronRules.OperationRadius(w, bal, s)}" +
-                                (targets > 0 ? $"  ·  목표 후보 {targets}곳" : ""), ProtoGui.Small);
-
-                GUILayout.BeginHorizontal();
-                PanelButton($"{s.Name} 목표 지정…", () => _boot.StartTargetPick(sq), enabled: reason == null && pickable > 0);
-                if (reason == null || reason == "이미 계획됨")
-                    PanelButton(s.Refuel
-                            ? $"급유 끄기 (반경 {SquadronRules.OperationRadius(w, bal, s, refuel: false)})"
-                            : $"급유 켜기 (반경 {SquadronRules.OperationRadius(w, bal, s, refuel: true)}, +{bal.RefuelCostRatio:P0})",
-                        () => sq.Refuel = !sq.Refuel, enabled: !planned);
-                GUILayout.EndHorizontal();
-
-                if (reason != null) GUILayout.Label(reason, _red);
-                else if (targets == 0) GUILayout.Label(NoTargetHint(s), _red);
-                else if (pickable == 0) GUILayout.Label(BlockedHint(w, bal, s, blocked.First()), _red);
-                if (planned) GUILayout.Label("계획을 제거해야 급유 설정을 바꿀 수 있음", ProtoGui.Small);
+                if (FlightRules.IsFlying(s))
+                {
+                    var (landing, d) = FlightRules.NearestLanding(w, s);
+                    var low = s.Fuel <= d + bal.IdleFuelPerTurn;
+                    GUILayout.Label($"■ {s.Name}  ·  비행 중 {s.AirHex.Value.ToOffset()}", ProtoGui.Bold);
+                    GUILayout.Label($"{FlightRules.Flyers(w, s).Count}기 · 연료 {s.Fuel} · 이동 {s.MovesLeft}/{FlightRules.Speed(w, bal, s)}{(s.AttackedThisTurn ? " · 이번 턴 교전함" : "")}", ProtoGui.Small);
+                    GUILayout.Label(landing == null ? "착륙할 아군 거점 없음" : $"가장 가까운 착륙: {landing.Name} 거리 {d}", low ? _red : ProtoGui.Small);
+                    if (low) GUILayout.Label($"연료 경고 — 하늘에서 턴을 마칠 때마다 연료 −{bal.IdleFuelPerTurn}, 0 아래면 불시착", _red);
+                    var ret = FlightRules.ReturnStep(w, bal, s);
+                    GUILayout.BeginHorizontal();
+                    PanelButton($"{s.Name} 이동·공격…", () => _boot.StartTargetPick(sq), enabled: FlightRules.Reach(w, bal, s) > 0);
+                    PanelButton(landing != null && ret == landing.Hex ? $"귀환 ({landing.Name} 착륙)" : "귀환 쪽으로 이동",
+                        () => { if (FlightRules.ReturnStep(w, bal, sq) is { } r) _boot.OrderFlight(sq, r); }, enabled: ret != null);
+                    GUILayout.EndHorizontal();
+                }
+                else
+                {
+                    var reason = FlightRules.CanLaunch(w, bal, s);
+                    var dest = reason == null ? FlightRules.Destinations(w, bal, s).ToList() : new List<Hex>();
+                    var targets = dest.Count(h => FlightRules.IsAttackTarget(w, s, h));
+                    GUILayout.Label($"■ {s.Name}  ·  {b.Name}{(s.Refuel ? "  ·  급유 켜짐" : "")}", ProtoGui.Bold);
+                    GUILayout.Label($"출격 {SortieRules.SortieAircraft(w, bal, s).Count()}/{s.AircraftIds.Count}기 · 비용 {SortieRules.Cost(w, bal, s)} · 속도 {FlightRules.Speed(w, bal, s)} · 연료 {FlightRules.MaxFuel(w, bal, s)}" +
+                                    (targets > 0 ? $" · 이번 턴 공격 가능 {targets}곳" : ""), ProtoGui.Small);
+                    GUILayout.BeginHorizontal();
+                    PanelButton($"{s.Name} 출격…", () => _boot.StartTargetPick(sq), enabled: reason == null && dest.Count > 0);
+                    if (reason == null)
+                        PanelButton(s.Refuel
+                                ? $"급유 끄기 (연료 {SquadronRules.OperationRadius(w, bal, s, refuel: false) * 2 + bal.ReserveFuel})"
+                                : $"급유 켜기 (연료 {SquadronRules.OperationRadius(w, bal, s, refuel: true) * 2 + bal.ReserveFuel}, +{bal.RefuelCostRatio:P0})",
+                            () => sq.Refuel = !sq.Refuel);
+                    GUILayout.EndHorizontal();
+                    if (reason != null) GUILayout.Label(reason, _red);
+                }
             }
 
             GUILayout.Space(8);
             if (w.Debriefs.Count > 0) PanelButton($"최근 디브리핑 다시 보기 ({w.Debriefs.Count}건)", () => _boot.OpenDebrief(0));
             if (w.EnemyEvents.Count > 0 || w.Intercepts.Count > 0) PanelButton("최근 적 턴 요약 다시 보기", () => _boot.ShowEnemyReport = true);
             PanelButton(bal.VisionEnabled ? "디버그: 시야 끄기 (적 전부 표시)" : "디버그: 시야 켜기", () => bal.VisionEnabled = !bal.VisionEnabled);
-            GUILayout.Label($"기체 크기별 비용 소형 30 · 중형 50 · 대형 80, 보급창고 −20%. 공중급유 = 반경 × {bal.RefuelRadiusMultiplier:0.#}, 비용 +{bal.RefuelCostRatio:P0}. 교대 기준 손상 {bal.SwapDamage}%, 불리 계수 {bal.AutoResolvePenalty}", _wrap);
+            GUILayout.Label($"출격 비용(이륙 때 한 번) 소형 30 · 중형 50 · 대형 80, 보급창고 −20%. 연료 = 반경 × 2 + 예비 {bal.ReserveFuel}, 한 칸 1, 하늘에서 턴을 마칠 때 {bal.IdleFuelPerTurn}. " +
+                            $"공중급유 = 반경 × {bal.RefuelRadiusMultiplier:0.#}, 비용 +{bal.RefuelCostRatio:P0}. 편대는 턴당 교전 1회, 비행 중에는 기지 요격 불참, 맞닿은 적은 먼저 교전을 겁니다. 착륙한 턴은 출격 불가", _wrap);
         }
-
-        string NoTargetHint(Squadron s)
-        {
-            var w = _boot.World;
-            var b = w.BaseById(s.BaseId);
-            var (d, name) = SortieRules.NearestTarget(w, s);
-            var radius = SquadronRules.OperationRadius(w, _boot.Balance, s);
-            var refuel = SquadronRules.OperationRadius(w, _boot.Balance, s, refuel: true);
-            return name == null ? "맵에 목표 없음"
-                : $"작전 반경 {radius} 안에 목표 없음 — 가장 가까운 {name}까지 거리 {d}" + (!s.Refuel && refuel >= d ? " (공중급유로 닿음)" : "");
-        }
-
-        /// <summary>목표는 있지만 모두 계획할 수 없을 때의 안내.</summary>
-        static string BlockedHint(World w, Balance bal, Squadron s, string reason) => reason == "자금 부족"
-            ? $"자금 부족 — 계획 합계 {SortieRules.PlannedCost(w, bal)} + 이 편대 {SortieRules.Cost(w, bal, s)} > 자금 {w.Funds}"
-            : reason == null ? null : $"목표 지정 불가 — {reason}";
 
         Vector2 _debriefScroll;
 
@@ -909,6 +935,12 @@ namespace Prototype.Strategy
             GUILayout.EndScrollView();
 
             GUILayout.FlexibleSpace();
+            if (w.Debriefs.Any(x => x.EnemyInitiated) && GUILayout.Button($"적 선공 디브리핑 보기 ({w.Debriefs.Count(x => x.EnemyInitiated)}건)"))
+                Do(() =>
+                {
+                    _boot.ShowEnemyReport = false;
+                    _boot.OpenDebrief(_boot.World.Debriefs.FindIndex(x => x.EnemyInitiated));
+                });
             if (GUILayout.Button("닫기 (Esc / East)")) Do(() => _boot.ShowEnemyReport = false);
             GUILayout.EndArea();
         }
@@ -1023,6 +1055,9 @@ namespace Prototype.Strategy
             "지상군 탭: 병영에서 고용 → 출동(목표 클릭) → 적 거점 인접에서 점령",
             "상단 바 '신뢰도'를 누르면 상부 통신: 장기 목표·긴급 지시·거부",
             "튜닝 메뉴: F2 (수치 슬라이더·테스터 이름·튜닝 값 내보내기·로그 폴더)",
+            "출격 탭: [출격…] → 갈 칸 클릭. 편대는 맵 위에서 턴마다 속도만큼 날고 연료가 떨어지기 전에 아군 거점에 착륙",
+            "비행 중 편대 칸을 클릭하면 그 편대 선택. 맞닿은 적은 적 턴에 먼저 교전을 겁니다",
+            "비행·턴 종료 후 이동을 맵에서 재생: 클릭 · Space · South로 건너뛰기",
             "디버그: 출격 탭 맨 아래 '시야 끄기', 격납고 탭 '손상 50·피로 80'",
         };
 

@@ -83,26 +83,30 @@ namespace Prototype.Strategy.Rules
 
         static void Sorties(World w, Balance bal)
         {
+            // C안: 비행 중 편대는 가장 가까운 아군 거점으로 돌아온다
+            foreach (var s in w.Squadrons.Where(FlightRules.IsFlying).ToList())
+                if (FlightRules.ReturnStep(w, bal, s) is { } step) FlightRules.Order(w, bal, s, step);
+
             foreach (var b in w.Bases.Where(x => x.Owner == World.Player).ToList())
             {
                 // 거점마다 편대 하나는 남긴다 (방어)
-                foreach (var s in w.SquadronsAt(b).Skip(1).ToList())
+                foreach (var s in w.SquadronsAt(b).Where(x => !FlightRules.IsFlying(x)).Skip(1).ToList())
                 {
-                    if (SortieRules.CanSortie(w, bal, s) != null) continue;
-                    var targets = SortieRules.Targets(w, bal, s).Where(t => SortieRules.CanPlan(w, bal, s, t) == null).ToList();
+                    if (FlightRules.CanLaunch(w, bal, s) != null) continue;
+                    // 이번 턴에 닿고, 다음 턴 돌아올 연료가 남는 목표만
+                    var targets = FlightRules.Destinations(w, bal, s)
+                        .Where(t => FlightRules.IsAttackTarget(w, s, t) && Hex.Distance(b.Hex, t) * 2 + bal.IdleFuelPerTurn <= FlightRules.MaxFuel(w, bal, s))
+                        .ToList();
                     if (targets.Count == 0) continue;
-                    // 지상군이 공략 중인 목표 거점이 있으면 폭격 우선, 아니면 가장 가까운 목표
                     var goalHex = w.Bases.FirstOrDefault(x => x.Id == w.GoalBaseId)?.Hex;
                     var target = targets.Contains(goalHex ?? default) && w.GroundUnits.Any(g => g.Deployed)
                         ? goalHex.Value
                         : targets.OrderBy(t => Hex.Distance(b.Hex, t)).First();
                     var mission = SortieRules.MissionAt(w, target);
-                    // 임무에 맞는 기체를 앞에
                     s.AircraftIds.Sort((x, y) => Stat(bal, w.AircraftById(y), mission).CompareTo(Stat(bal, w.AircraftById(x), mission)));
-                    SortieRules.Plan(w, bal, s, target);
+                    FlightRules.Order(w, bal, s, target);
                 }
             }
-            if (w.SortiePlan.Count > 0) SortieRules.ExecuteAll(w, bal);
         }
 
         static int Stat(Balance bal, Aircraft a, MissionType? m)

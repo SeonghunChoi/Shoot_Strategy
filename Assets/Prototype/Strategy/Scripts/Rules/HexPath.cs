@@ -13,7 +13,7 @@ namespace Prototype.Strategy.Rules
         };
 
         /// <summary>from에서 to까지의 경로 (from 제외, to 포함). 못 가면 null.</summary>
-        public static List<Hex> Find(HexMap map, Balance bal, Hex from, Hex to)
+        public static List<Hex> Find(HexMap map, Balance bal, Hex from, Hex to, System.Func<Hex, int> extraCost = null)
         {
             if (from == to) return new List<Hex>();
             var open = new SortedSet<(int f, int order, Hex h)>(Comparer<(int f, int order, Hex h)>.Create((a, b) =>
@@ -42,7 +42,7 @@ namespace Prototype.Strategy.Rules
                     if (!map.Contains(n) || closed.Contains(n)) continue;
                     var cost = MoveCost(bal, map[n].Terrain);
                     if (cost < 0) continue;
-                    var ng = g[h] + cost;
+                    var ng = g[h] + cost + (extraCost?.Invoke(n) ?? 0);
                     if (g.TryGetValue(n, out var old) && old <= ng) continue;
                     g[n] = ng;
                     came[n] = h;

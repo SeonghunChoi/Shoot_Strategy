@@ -38,6 +38,9 @@ namespace Prototype.Strategy.Rules
         /// <summary>기체 작전 반경 (헥스). 편대 반경은 편대 안 최솟값.</summary>
         [Tune("기체", "작전 반경", 1f, 8f)]
         public int Range;
+        /// <summary>비행 속도 (칸/턴, C안). 편대 속도는 편대 안 최솟값.</summary>
+        [Tune("기체", "속도 (칸/턴)", 1f, 8f)]
+        public int Speed;
     }
 
     /// <summary>보유 기체 1기. 편대에 들어 있지 않으면 예비 (위치 없음).</summary>
@@ -98,5 +101,17 @@ namespace Prototype.Strategy.Rules
         public bool SortiedThisTurn;
         /// <summary>이번 출격에 공중급유 (비용 추가, 작전 반경 배율). 출격 후 꺼진다.</summary>
         public bool Refuel;
+        /// <summary>비행 중 위치 (null이면 소속 거점에 있음). C안: 출격한 편대는 맵 위 부대가 되어 턴마다 속도만큼 날고, 아군 거점에 내려야 끝난다.</summary>
+        public Hex? AirHex;
+        /// <summary>남은 연료 (칸).</summary>
+        public int Fuel;
+        /// <summary>이번 턴 남은 이동 칸.</summary>
+        public int MovesLeft;
+        /// <summary>이번 턴 교전함 (편대마다 턴당 1회).</summary>
+        public bool AttackedThisTurn;
+        /// <summary>이번 턴 착륙함 → 이번 턴 출격 불가 (기지 요격은 가능).</summary>
+        public bool LandedThisTurn;
+        /// <summary>출격한 기체 (비행 중 교전에 나서는 기체).</summary>
+        public readonly List<int> FlyingAircraftIds = new();
     }
 }

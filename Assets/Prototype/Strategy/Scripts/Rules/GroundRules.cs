@@ -112,6 +112,7 @@ namespace Prototype.Strategy.Rules
                 var path = HexPath.Find(w.Map, bal, g.Hex, target);
                 if (path == null) continue;
                 var points = bal.GroundMovePoints;
+                var trace = w.AddTrace(TraceKind.Ground, World.Player, g.Id, g.Name, new[] { g.Hex });
                 foreach (var step in path)
                 {
                     if (w.EnemyUnitAt(step) != null) break;                       // 적 부대가 막음
@@ -120,6 +121,8 @@ namespace Prototype.Strategy.Rules
                     if (cost > points) break;
                     points -= cost;
                     g.Hex = step;
+                    trace.Path.Add(step);
+                    trace.Seen.Add(true);
                     if (enemyBase != null && Hex.Distance(g.Hex, target) <= 1) break;
                 }
 
@@ -141,6 +144,7 @@ namespace Prototype.Strategy.Rules
         /// </summary>
         static void Assault(World w, Balance bal, GroundUnit g, Base b)
         {
+            w.AddEvent(b.Hex, "지상 공격");
             var garrison = w.EnemyUnitAt(b.Hex);
             if (garrison != null)
             {
