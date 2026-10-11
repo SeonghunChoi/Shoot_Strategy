@@ -32,6 +32,7 @@ namespace Prototype.Strategy
         readonly HexMesh _overlay;
         readonly HexMesh _markers;
         readonly HexMesh _prediction;
+        readonly HexMesh _playback;
 
         public HexMapView(HexMap map, Transform parent)
         {
@@ -41,6 +42,7 @@ namespace Prototype.Strategy
             _overlay = new HexMesh("Overlay", parent, -0.1f, 2);
             _markers = new HexMesh("Markers", parent, -0.2f, 3);
             _prediction = new HexMesh("Prediction", parent, -0.15f, 2);
+            _playback = new HexMesh("Playback", parent, -0.18f, 3);
             BuildTerrain();
         }
 
@@ -71,7 +73,7 @@ namespace Prototype.Strategy
         };
 
         /// <summary>영역 색·경계, 거점 본부, 활주로 선, 적 부대(보이는 것만)와 마지막 목격 유령.</summary>
-        public void UpdateTerritory(World world, HashSet<Hex> visible, IEnumerable<Sighting> ghosts)
+        public void UpdateTerritory(World world, Balance bal, HashSet<Hex> visible, IEnumerable<Sighting> ghosts, MovePlayback playback)
         {
             _territory.Clear();
             foreach (var (h, baseId) in world.Territory)
@@ -117,7 +119,7 @@ namespace Prototype.Strategy
             // 적 부대 (보이는 것만): 세력 색 작은 헥스 + 테두리, 이번 턴 목표 방향 선
             foreach (var u in world.EnemyUnits)
             {
-                if (!visible.Contains(u.Hex)) continue;
+                if (!visible.Contains(u.Hex) || playback.Hides(TraceKind.Enemy, u.Id)) continue;
                 var color = OwnerColor(u.Owner);
                 _territory.AddFilled(u.Hex, 0.55f, new Color(color.r * 0.4f, color.g * 0.3f, color.b * 0.3f, 0.95f));
                 _territory.AddOutline(u.Hex, 0.55f, 0.45f, color);
@@ -153,14 +155,83 @@ namespace Prototype.Strategy
             // 출동 중 아군 지상군: 녹색 작은 헥스 + 목표 방향 선
             foreach (var g in world.GroundUnits)
             {
-                if (!g.Deployed) continue;
+                if (!g.Deployed || playback.Hides(TraceKind.Ground, g.Id)) continue;
                 _territory.AddFilled(g.Hex, 0.45f, new Color(0.12f, 0.3f, 0.1f, 0.95f));
                 _territory.AddOutline(g.Hex, 0.45f, 0.35f, GroundColor);
                 if (g.Target is { } t && t != g.Hex)
                     _territory.AddSegment(HexLayout.ToWorld(g.Hex), HexLayout.ToWorld(t), 0.08f, new Color(GroundColor.r, GroundColor.g, GroundColor.b, 0.6f));
             }
 
+            // 체공 편대: 감시 반경과 편대 표식 (재생으로 아직 도착하지 않았으면 재생 쪽에서 그린다)
+            foreach (var s in world.Squadrons)
+            {
+                if (s.LoiterHex is not { } lh || playback.Hides(TraceKind.Squadron, s.Id)) continue;
+                DrawLoiterArea(_territory, bal, lh);
+                DrawSquadronToken(_territory, HexLayout.ToWorld(lh));
+            }
+
             _territory.Apply();
+        }
+
+        static readonly Color SquadronFill = new(0.06f, 0.16f, 0.32f, 0.95f);
+
+        void DrawLoiterArea(HexMesh mesh, Balance bal, Hex center)
+        {
+            var area = new HashSet<Hex>(SortieRules.LoiterArea(bal, center));
+            foreach (var h in area)
+            {
+                if (!_map.Contains(h)) continue;
+                mesh.AddFilled(h, CellScale, new Color(PlayerColor.r, PlayerColor.g, PlayerColor.b, 0.1f));
+                for (var dir = 0; dir < 6; dir++)
+                    if (!area.Contains(h.Neighbor(dir))) mesh.AddEdge(h, dir, 0.07f, new Color(PlayerColor.r, PlayerColor.g, PlayerColor.b, 0.85f));
+            }
+        }
+
+        static void DrawSquadronToken(HexMesh mesh, Vector2 pos)
+        {
+            mesh.AddFilledAt(pos, 0.4f, SquadronFill);
+            mesh.AddOutlineAt(pos, 0.46f, 0.36f, PlayerColor);
+            mesh.AddFilledAt(pos, 0.12f, Color.white);
+        }
+
+        /// <summary>이동 재생 표식: 움직이는 편대·적 부대·지상군, 교전 표시(퍼지는 붉은 고리), 체공 편대의 감시 반경.</summary>
+        public void UpdatePlayback(MovePlayback playback, Balance bal)
+        {
+            _playback.Clear();
+            if (playback.Playing)
+            {
+                foreach (var t in playback.Tokens())
+                {
+                    var trace = t.Trace;
+                    switch (trace.Kind)
+                    {
+                        case TraceKind.Squadron:
+                            if (trace.Loiter && !t.Current) DrawLoiterArea(_playback, bal, trace.Path[0]);
+                            if (t.Current) _playback.AddSegment(HexLayout.ToWorld(trace.Path[0]), t.Position, 0.06f, new Color(PlayerColor.r, PlayerColor.g, PlayerColor.b, 0.6f));
+                            DrawSquadronToken(_playback, t.Position);
+                            break;
+                        case TraceKind.Enemy:
+                        {
+                            var color = OwnerColor(trace.Owner);
+                            _playback.AddFilledAt(t.Position, 0.55f, new Color(color.r * 0.4f, color.g * 0.3f, color.b * 0.3f, 0.95f));
+                            _playback.AddOutlineAt(t.Position, 0.55f, 0.45f, color);
+                            break;
+                        }
+                        case TraceKind.Ground:
+                            _playback.AddFilledAt(t.Position, 0.45f, new Color(0.12f, 0.3f, 0.1f, 0.95f));
+                            _playback.AddOutlineAt(t.Position, 0.45f, 0.35f, GroundColor);
+                            break;
+                        case TraceKind.Event:
+                        {
+                            var p = Mathf.Clamp01(t.EventProgress);
+                            var outer = 0.5f + 0.6f * p;
+                            _playback.AddOutlineAt(t.Position, outer, outer - 0.14f, new Color(1f, 0.35f, 0.2f, 1f - p * 0.8f));
+                            break;
+                        }
+                    }
+                }
+            }
+            _playback.Apply();
         }
 
         /// <summary>

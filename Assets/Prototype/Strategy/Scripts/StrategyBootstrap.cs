@@ -63,6 +63,8 @@ namespace Prototype.Strategy
         public EnemyUnit SelectedEnemy { get; private set; }
         public EnemyTurn.Prediction SelectedEnemyPrediction { get; private set; }
         public int DebriefIndex { get; private set; }
+        /// <summary>출격·적 턴 이동 재생 (재생 중에는 맵·패널 조작을 막는다).</summary>
+        public MovePlayback Playback { get; } = new();
         /// <summary>미실행 출격 계획이 있는 채로 턴 종료를 한 번 눌렀는지 (두 번째 누르면 취소하고 종료).</summary>
         public bool EndTurnWarned { get; private set; }
 
@@ -125,6 +127,7 @@ namespace Prototype.Strategy
             World = World.Create(seed, Balance);
             Log.BeginRun(World, seed);
             TurnSeconds = 0f;
+            Playback.Start(System.Array.Empty<MoveTrace>(), null);
             ShowEnemyReport = false;
             ShowHq = false;
             Selected = null;
@@ -177,7 +180,10 @@ namespace Prototype.Strategy
             Log.LogTurn(World, report, TurnSeconds, gaps);
             TurnSeconds = 0f;
             if (World.GameOver != null) Log.EndRun(World, Balance, ResultName(World));
-            ShowEnemyReport = World.EnemyEvents.Count > 0 || World.Intercepts.Count > 0;
+            // 적 턴 이동을 맵에서 재생한 뒤 요약 창
+            var showReport = World.EnemyEvents.Count > 0 || World.Intercepts.Count > 0;
+            ShowEnemyReport = false;
+            Playback.Start(World.Traces, () => ShowEnemyReport = showReport);
         }
 
         public void StartExpand(Base b)
@@ -212,7 +218,8 @@ namespace Prototype.Strategy
             if (World.SortiePlan.Count == 0) return;
             ClearModes();
             SortieRules.ExecuteAll(World, Balance);
-            OpenDebrief(0);
+            // 편대 비행·교전을 맵에서 재생한 뒤 디브리핑
+            Playback.Start(World.Traces, () => OpenDebrief(0));
         }
 
         public void OpenDebrief(int index)
@@ -230,11 +237,21 @@ namespace Prototype.Strategy
             if (_controls.TuningToggle.WasPressedThisFrame()) _tuning.Toggle();
             var typing = GUIUtility.keyboardControl != 0;
 
+            // 이동 재생 중: 클릭·Space·South·Esc로 건너뛰기, 그 밖의 명령은 막는다 (카메라는 움직일 수 있음)
+            var playing = Playback.Playing;
+            if (playing)
+            {
+                Playback.Tick(dt);
+                if (_controls.Skip.WasPressedThisFrame() || _controls.MouseSelect.WasPressedThisFrame() ||
+                    _controls.PadSelect.WasPressedThisFrame() || _controls.Cancel.WasPressedThisFrame())
+                    Playback.Skip();
+            }
+
             if (_controls.DebugToggle.WasPressedThisFrame()) _hud.ToggleHelp();
-            if (!typing && _controls.Restart.WasPressedThisFrame()) Restart();
-            if (!typing && _controls.EndTurn.WasPressedThisFrame() && !ShowDebrief && !ShowEnemyReport) EndTurn();
-            if (!typing && _controls.TabPrev.WasPressedThisFrame()) ShiftTab(-1);
-            if (!typing && _controls.TabNext.WasPressedThisFrame()) ShiftTab(1);
+            if (!typing && !playing && _controls.Restart.WasPressedThisFrame()) Restart();
+            if (!typing && !playing && _controls.EndTurn.WasPressedThisFrame() && !ShowDebrief && !ShowEnemyReport) EndTurn();
+            if (!typing && !playing && _controls.TabPrev.WasPressedThisFrame()) ShiftTab(-1);
+            if (!typing && !playing && _controls.TabNext.WasPressedThisFrame()) ShiftTab(1);
 
             if (!typing) MapCamera.Pan(_controls.Pan.ReadValue<Vector2>(), dt);
             if (_controls.DragButton.IsPressed()) MapCamera.Drag(_controls.DragDelta.ReadValue<Vector2>());
@@ -259,12 +276,12 @@ namespace Prototype.Strategy
             if (_controls.PanelDown.WasPressedThisFrame()) _hud.PadFocusMove(1);
             if (_controls.PadCursor.ReadValue<Vector2>().sqrMagnitude > 0.04f) _hud.PadFocusClear();
 
-            var mouseSelect = _controls.MouseSelect.WasPressedThisFrame() && !overUi;
-            var padSelect = _controls.PadSelect.WasPressedThisFrame();
+            var mouseSelect = !playing && _controls.MouseSelect.WasPressedThisFrame() && !overUi;
+            var padSelect = !playing && _controls.PadSelect.WasPressedThisFrame();
             if (padSelect && _hud.HasPadFocus) _hud.PadActivate();
             else if ((mouseSelect || padSelect) && World.GameOver == null && !ShowDebrief && !ShowEnemyReport) OnSelect(Cursor.Hover);
 
-            if (_controls.Cancel.WasPressedThisFrame())
+            if (!playing && _controls.Cancel.WasPressedThisFrame())
             {
                 if (ShowEnemyReport) ShowEnemyReport = false;
                 else if (ShowDebrief) ShowDebrief = false;
@@ -281,7 +298,8 @@ namespace Prototype.Strategy
             if (EndTurnWarned && World.SortiePlan.Count == 0) EndTurnWarned = false;
 
             Visible = Vision.VisibleHexes(World, Balance);
-            _view.UpdateTerritory(World, Visible, Vision.StaleSightings(World, Balance));
+            _view.UpdateTerritory(World, Balance, Visible, Vision.StaleSightings(World, Balance), Playback);
+            _view.UpdatePlayback(Playback, Balance);
             BuildHighlight(out var color);
             _view.UpdateMarkers(Cursor.Hover, Selected, _highlight, color);
 

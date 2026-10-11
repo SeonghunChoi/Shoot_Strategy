@@ -46,6 +46,9 @@ namespace Prototype.Strategy.Rules
             }
             foreach (var g in w.GroundUnits.Where(x => x.Deployed))
                 foreach (var r in Hex.Range(g.Hex, bal.GroundVisionRange)) if (w.Map.Contains(r)) set.Add(r);
+            foreach (var s in w.Squadrons)
+                if (s.LoiterHex is { } lh)
+                    foreach (var r in SortieRules.LoiterArea(bal, lh)) if (w.Map.Contains(r)) set.Add(r);
             foreach (var t in w.SortiedTargets)
                 foreach (var r in SortieRules.OperationArea(t)) if (w.Map.Contains(r)) set.Add(r);
             return set;

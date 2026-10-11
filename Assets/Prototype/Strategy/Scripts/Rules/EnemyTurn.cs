@@ -106,6 +106,9 @@ namespace Prototype.Strategy.Rules
 
         static void ActUnit(World w, Balance bal, Faction f, EnemyUnit u)
         {
+            // 이미 체공 편대의 감시 반경 안이면 요격당하고 이번 턴 행동 끝
+            if (LoiterIntercept(w, bal, u)) return;
+
             // 인접한 아군 지상군(출동 중)이 있으면 이동하지 않고 교전
             var engaged = w.GroundUnits.FirstOrDefault(g => g.Deployed && Hex.Distance(g.Hex, u.Hex) <= 1);
             if (engaged != null)
@@ -128,7 +131,15 @@ namespace Prototype.Strategy.Rules
             var steps = StepsThisTurn(w, bal, f, u.Hex, g, f.Stance, out _);
             if (steps.Count > 0)
             {
-                u.Hex = steps[^1];
+                // 한 칸씩 이동하며 기록 (맵 재생). 체공 편대의 감시 반경에 들어오면 요격당하고 멈춘다
+                var trace = w.AddTrace(TraceKind.Enemy, u.Owner, u.Id, u.Name, new[] { u.Hex }, Vision.IsVisible(w, bal, u.Hex));
+                foreach (var step in steps)
+                {
+                    u.Hex = step;
+                    trace.Path.Add(step);
+                    trace.Seen.Add(Vision.IsVisible(w, bal, step));
+                    if (LoiterIntercept(w, bal, u)) return;
+                }
                 if (Vision.IsVisible(w, bal, u.Hex)) w.EnemyEvents.Add($"{u.Name} 이동 → {u.Hex.ToOffset()}");
             }
 
@@ -152,12 +163,40 @@ namespace Prototype.Strategy.Rules
             return null;
         }
 
+        /// <summary>체공 편대의 감시 반경에 든 적 부대를 요격 (편대마다 체공 1회에 한 번). 요격당한 부대는 이번 턴 행동을 멈춘다.</summary>
+        static bool LoiterIntercept(World w, Balance bal, EnemyUnit u)
+        {
+            var s = w.Squadrons.FirstOrDefault(x => x.LoiterHex is { } lh && !x.LoiterEngaged &&
+                                                    Hex.Distance(lh, u.Hex) <= bal.LoiterRadius && SortieRules.LoiterFlyers(w, x).Count > 0);
+            if (s == null) return false;
+            s.LoiterEngaged = true;
+            var rep = SortieRules.Resolve(w, bal, s, u.Hex, u);
+            rep.Order = w.Debriefs.Count + 1;
+            w.Debriefs.Add(rep);
+            w.AddEvent(u.Hex, "체공 요격");
+            w.EnemyEvents.Add($"{s.Name} 체공 요격 → {u.Name}: {rep.Effect}");
+            w.Log("체공요격", $"{s.Name} → {u.Name} · {rep.Rounds}R · 파괴율 {rep.DestructionRate:0.00}");
+            u.Goal = null;
+            return true;
+        }
+
+        /// <summary>세력이 아는 체공 지역 칸 (체공 위치가 탐지 범위 안). 경로를 짤 때 피해 돌아간다.</summary>
+        static HashSet<Hex> KnownLoiterAreas(World w, Balance bal, Faction f)
+        {
+            var set = new HashSet<Hex>();
+            foreach (var s in w.Squadrons)
+                if (s.LoiterHex is { } lh && FactionSees(w, bal, f, lh))
+                    foreach (var h in SortieRules.LoiterArea(bal, lh)) set.Add(h);
+            return set;
+        }
+
         /// <summary>이번 턴에 지나갈 칸들 (이동력 한도, 남의 거점 칸 앞에서 멈춤, 공세면 목표 인접에서 멈춤). rest = 남은 경로.</summary>
         static List<Hex> StepsThisTurn(World w, Balance bal, Faction f, Hex from, Hex goal, Stance stance, out List<Hex> rest)
         {
             var steps = new List<Hex>();
             rest = new List<Hex>();
-            var path = HexPath.Find(w.Map, bal, from, goal);
+            var avoid = KnownLoiterAreas(w, bal, f);
+            var path = HexPath.Find(w.Map, bal, from, goal, avoid.Count == 0 ? null : h => avoid.Contains(h) ? bal.LoiterAvoidCost : 0);
             if (path == null) return steps;
             var points = bal.EnemyMovePoints;
             var stopped = false;
@@ -239,6 +278,7 @@ namespace Prototype.Strategy.Rules
 
         static void Attack(World w, Balance bal, Faction f, EnemyUnit u, Base target)
         {
+            w.AddEvent(target.Hex, "피습");
             var rep = new InterceptReport
             {
                 BaseName = target.Name,
@@ -403,6 +443,7 @@ namespace Prototype.Strategy.Rules
         /// <summary>적 부대 ↔ 출동 중 아군 지상군 수치 교전 (세력 간 교전과 같은 방식).</summary>
         static void EngageGround(World w, Balance bal, EnemyUnit u, GroundUnit g)
         {
+            w.AddEvent(g.Hex, "지상 교전");
             var dealt = Math.Min(bal.FactionCombatMaxDamage, g.Strength / 2);
             var taken = Math.Min(bal.FactionCombatMaxDamage, u.Strength / 2);
             Damage(u, dealt);

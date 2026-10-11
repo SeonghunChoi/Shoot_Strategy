@@ -3,6 +3,28 @@ using System.Linq;
 
 namespace Prototype.Strategy.Rules
 {
+    public enum TraceKind
+    {
+        Squadron, // 아군 편대 비행
+        Enemy,    // 적 부대 이동
+        Ground,   // 아군 지상군 이동
+        Event,    // 교전·피습 등 한 칸 표시
+    }
+
+    /// <summary>맵 재생용 이동 기록. Path[0]이 출발 칸. Seen은 칸마다 그 순간 플레이어 시야 안이었는지.</summary>
+    public sealed class MoveTrace
+    {
+        public TraceKind Kind;
+        public int Owner;
+        public int UnitId;
+        public string Name;
+        public readonly List<Hex> Path = new();
+        public readonly List<bool> Seen = new();
+        public string Event;
+        /// <summary>체공 편대의 귀환: 재생 전까지는 체공 위치에 감시 반경과 함께 표시.</summary>
+        public bool Loiter;
+    }
+
     public sealed class Base
     {
         public int Id;
@@ -102,6 +124,22 @@ namespace Prototype.Strategy.Rules
         public readonly List<SortiePlan> SortiePlan = new();
         /// <summary>가장 최근 출격 실행의 디브리핑.</summary>
         public readonly List<SortieReport> Debriefs = new();
+        /// <summary>이번 출격 실행·턴 종료에서 일어난 이동과 사건 (뷰가 맵 위에서 재생). 출격 실행·턴 종료 때 새로 쌓는다.</summary>
+        public readonly List<MoveTrace> Traces = new();
+
+        public MoveTrace AddTrace(TraceKind kind, int owner, int id, string name, IEnumerable<Hex> path, bool seen = true)
+        {
+            var t = new MoveTrace { Kind = kind, Owner = owner, UnitId = id, Name = name };
+            foreach (var h in path)
+            {
+                t.Path.Add(h);
+                t.Seen.Add(seen);
+            }
+            Traces.Add(t);
+            return t;
+        }
+
+        public void AddEvent(Hex h, string text, bool seen = true) => AddTrace(TraceKind.Event, 0, 0, text, new[] { h }, seen).Event = text;
         /// <summary>이번 턴에 실행한 출격의 목표 (겹침 보정용).</summary>
         public readonly List<Hex> SortiedTargets = new();
 

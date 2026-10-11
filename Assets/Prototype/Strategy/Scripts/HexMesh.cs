@@ -44,9 +44,11 @@ namespace Prototype.Strategy
         }
 
         /// <summary>채운 헥스. scale은 Size 대비 비율.</summary>
-        public void AddFilled(Hex h, float scale, Color color)
+        public void AddFilled(Hex h, float scale, Color color) => AddFilledAt(HexLayout.ToWorld(h), scale, color);
+
+        /// <summary>채운 헥스를 임의 위치에 (재생 중 움직이는 표식).</summary>
+        public void AddFilledAt(Vector2 center, float scale, Color color)
         {
-            var center = HexLayout.ToWorld(h);
             var start = _vertices.Count;
             _vertices.Add(center);
             _colors.Add(color);
@@ -64,9 +66,10 @@ namespace Prototype.Strategy
         }
 
         /// <summary>테두리 고리 (outer~inner 사이).</summary>
-        public void AddOutline(Hex h, float outer, float inner, Color color)
+        public void AddOutline(Hex h, float outer, float inner, Color color) => AddOutlineAt(HexLayout.ToWorld(h), outer, inner, color);
+
+        public void AddOutlineAt(Vector2 center, float outer, float inner, Color color)
         {
-            var center = HexLayout.ToWorld(h);
             var start = _vertices.Count;
             for (var i = 0; i < 6; i++)
             {

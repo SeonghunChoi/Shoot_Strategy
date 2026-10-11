@@ -337,17 +337,32 @@ namespace Prototype.Strategy.Rules
         {
             foreach (var s in w.Squadrons)
             {
+                s.ReturnedFromLoiter = false;
                 var b = w.BaseById(s.BaseId);
                 var maint = MaintenanceGrade(w, b);
                 var rate = maint > 0 ? maint * bal.RepairPerMaintenanceGrade : bal.RepairWithoutMaintenance;
                 var ent = EntertainmentGrade(w, b);
+                var airborne = s.LoiterHex != null; // 체공 편대는 적 턴 동안 하늘에 있었으므로 이번 수리는 없음
                 foreach (var id in s.AircraftIds)
                 {
                     var a = w.AircraftById(id);
-                    a.Damage = Math.Max(0, a.Damage - rate);
+                    if (!airborne) a.Damage = Math.Max(0, a.Damage - rate);
                     var p = w.PilotById(a.PilotId);
                     if (p != null && !s.SortiedThisTurn)
                         p.Fatigue = Math.Max(0, p.Fatigue - bal.FatigueRecovery - ent * bal.FatigueRecoveryPerEntertainmentGrade);
+                }
+                if (airborne)
+                {
+                    // 체공 귀환: 맵 재생용 비행 기록, 귀환 피로, 다음 턴 출격 불가
+                    if (s.AircraftIds.Count > 0)
+                        w.AddTrace(TraceKind.Squadron, World.Player, s.Id, s.Name, Hex.Line(s.LoiterHex.Value, b.Hex)).Loiter = true;
+                    foreach (var id in s.LoiterAircraftIds)
+                        if (w.PilotById(w.AircraftById(id)?.PilotId ?? 0) is { } lp)
+                            lp.Fatigue = Math.Min(100, lp.Fatigue + bal.LoiterFatigue);
+                    s.LoiterHex = null;
+                    s.LoiterAircraftIds.Clear();
+                    s.LoiterEngaged = false;
+                    s.ReturnedFromLoiter = true;
                 }
                 s.SortiedThisTurn = false;
                 s.MovedThisTurn = false;

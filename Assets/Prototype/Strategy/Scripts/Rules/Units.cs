@@ -98,5 +98,13 @@ namespace Prototype.Strategy.Rules
         public bool SortiedThisTurn;
         /// <summary>이번 출격에 공중급유 (비용 추가, 작전 반경 배율). 출격 후 꺼진다.</summary>
         public bool Refuel;
+        /// <summary>체공 중 위치: 출격 후 적 턴 동안 목표 상공에 남아 감시 반경의 적을 요격. 턴 종료 처리 끝에 귀환.</summary>
+        public Hex? LoiterHex;
+        /// <summary>체공 중인 기체 (출격해 살아남은 기체).</summary>
+        public readonly List<int> LoiterAircraftIds = new();
+        /// <summary>이번 적 턴에 이미 요격함 (체공 1회에 한 번).</summary>
+        public bool LoiterEngaged;
+        /// <summary>지난 적 턴에 체공하고 돌아옴 → 이번 턴 출격 불가.</summary>
+        public bool ReturnedFromLoiter;
     }
 }

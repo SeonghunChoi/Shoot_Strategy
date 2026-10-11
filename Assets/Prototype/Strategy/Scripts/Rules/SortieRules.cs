@@ -21,6 +21,8 @@ namespace Prototype.Strategy.Rules
         public int SquadronId;
         public Hex Target;
         public MissionType Mission;
+        /// <summary>정산 후 귀환하지 않고 적 턴 동안 목표 상공에 남는다 (연료가 남을 때).</summary>
+        public bool Loiter;
     }
 
     public sealed class AircraftOutcome
@@ -59,6 +61,10 @@ namespace Prototype.Strategy.Rules
         public readonly List<string> Log = new();
         public readonly List<AircraftOutcome> Aircraft = new();
         public string Effect;
+        /// <summary>체공 편대가 적 턴에 한 요격 (비용 없음).</summary>
+        public bool Intercept;
+        /// <summary>정산 후 체공에 들어감.</summary>
+        public bool Loiter;
     }
 
     /// <summary>
@@ -98,6 +104,8 @@ namespace Prototype.Strategy.Rules
         public static string CanSortie(World w, Balance bal, Squadron s)
         {
             if (s.MovedThisTurn) return "이번 턴 재배치함";
+            if (s.LoiterHex != null) return "체공 중";
+            if (s.ReturnedFromLoiter) return "체공 후 귀환 — 이번 턴 출격 불가";
             if (s.SortiedThisTurn) return "이번 턴 출격함";
             if (w.SortiePlan.Any(p => p.SquadronId == s.Id)) return "이미 계획됨";
             if (!SortieAircraft(w, bal, s).Any()) return "출격 가능한 기체 없음";
@@ -159,6 +167,34 @@ namespace Prototype.Strategy.Rules
 
         public static void Unplan(World w, SortiePlan p) => w.SortiePlan.Remove(p);
 
+        // ---- 연료·체공 ----
+
+        /// <summary>편대 연료 = 작전 반경 × 2 (왕복 칸 수). 공중급유를 켜면 반경이 늘어난 만큼 늘어난다.</summary>
+        public static int Fuel(World w, Balance bal, Squadron s) => SquadronRules.OperationRadius(w, bal, s) * 2;
+
+        public static int FuelNeeded(World w, Balance bal, Squadron s, Hex target, bool loiter) =>
+            Hex.Distance(w.BaseById(s.BaseId).Hex, target) * 2 + (loiter ? bal.LoiterFuelCost : 0);
+
+        public static string CanLoiter(World w, Balance bal, Squadron s, Hex target)
+        {
+            var need = FuelNeeded(w, bal, s, target, true);
+            var fuel = Fuel(w, bal, s);
+            return need > fuel ? $"연료 부족 (왕복 + 체공 {need} > 연료 {fuel})" : null;
+        }
+
+        public static void SetLoiter(World w, Balance bal, SortiePlan p, bool on)
+        {
+            var s = w.SquadronById(p.SquadronId);
+            if (on && (s == null || CanLoiter(w, bal, s, p.Target) != null)) return;
+            p.Loiter = on;
+        }
+
+        public static IEnumerable<Hex> LoiterArea(Balance bal, Hex h) => Hex.Range(h, bal.LoiterRadius);
+
+        /// <summary>체공 중 요격에 나설 수 있는 기체 (출격해 살아남고 파일럿이 탄 기체. 피로 탈진이어도 이미 하늘에 있다).</summary>
+        public static List<Aircraft> LoiterFlyers(World w, Squadron s) =>
+            s.LoiterAircraftIds.Select(w.AircraftById).Where(a => a != null && a.PilotId != 0 && a.Damage < 100 && s.AircraftIds.Contains(a.Id)).ToList();
+
         public static void Reorder(World w, SortiePlan p, int delta)
         {
             var i = w.SortiePlan.IndexOf(p);
@@ -184,6 +220,7 @@ namespace Prototype.Strategy.Rules
         public static List<SortieReport> ExecuteAll(World w, Balance bal)
         {
             w.Debriefs.Clear();
+            w.Traces.Clear();
             var order = 1;
             foreach (var plan in w.SortiePlan.ToList())
             {
@@ -200,10 +237,31 @@ namespace Prototype.Strategy.Rules
                     });
                     continue;
                 }
+                var loiter = plan.Loiter && CanLoiter(w, bal, s, plan.Target) == null; // 정산이 급유를 끄기 전에 판정
+                var home = w.BaseById(s.BaseId).Hex;
                 var report = Resolve(w, bal, s, plan.Target);
                 report.Order = order++;
                 w.Debriefs.Add(report);
                 w.SortiedTargets.Add(plan.Target);
+
+                // 맵 재생: 출발 → 교전 → 귀환 (체공이면 목표 상공에 남음)
+                w.AddTrace(TraceKind.Squadron, World.Player, s.Id, s.Name, Hex.Line(home, plan.Target));
+                w.AddEvent(plan.Target, report.Exit == ExitReason.Retreat ? "철수" : $"교전 {report.Rounds}R");
+                var survivors = report.Aircraft.Where(o => !o.ShotDown).Select(o => o.AircraftId).ToList();
+                if (loiter && survivors.Count > 0)
+                {
+                    s.LoiterHex = plan.Target;
+                    s.LoiterAircraftIds.Clear();
+                    s.LoiterAircraftIds.AddRange(survivors);
+                    s.LoiterEngaged = false;
+                    report.Loiter = true;
+                    report.Effect += $" · 체공: 적 턴 동안 반경 {bal.LoiterRadius} 감시";
+                    w.Log("체공", $"{s.Name} @ {plan.Target.ToOffset()}");
+                }
+                else if (survivors.Count > 0)
+                {
+                    w.AddTrace(TraceKind.Squadron, World.Player, s.Id, s.Name, Hex.Line(plan.Target, home));
+                }
                 var downs = report.Aircraft.Where(o => o.ShotDown).Select(o => $"{o.AircraftName}:{o.Fate}/{o.PilotFate}");
                 w.Log("출격", $"순서 {report.Order} · {report.SquadronName} → {report.TargetName} · {MissionName(report.Mission)}" +
                               $" · {(report.OverEnemyTerritory ? "적 영역" : "아군·중립")}{(report.OverlapBonus ? " · 겹침 보정" : "")}" +
@@ -214,24 +272,27 @@ namespace Prototype.Strategy.Rules
             return w.Debriefs;
         }
 
-        public static SortieReport Resolve(World w, Balance bal, Squadron s, Hex target)
+        /// <summary>출격 정산. interceptUnit이 있으면 체공 편대의 적 턴 요격 (비용 없음, 체공 기체로, 요격 피로).</summary>
+        public static SortieReport Resolve(World w, Balance bal, Squadron s, Hex target, EnemyUnit interceptUnit = null)
         {
             var rng = w.Rng;
-            var mission = MissionAt(w, target) ?? MissionType.UnitAttack;
-            var unit = w.EnemyUnitAt(target);
-            var enemyBase = w.BaseAt(target);
+            var intercept = interceptUnit != null;
+            var mission = intercept ? MissionType.UnitAttack : MissionAt(w, target) ?? MissionType.UnitAttack;
+            var unit = intercept ? interceptUnit : w.EnemyUnitAt(target);
+            var enemyBase = intercept ? null : w.BaseAt(target);
             var report = new SortieReport
             {
                 SquadronName = s.Name,
                 Mission = mission,
                 Target = target,
-                TargetName = TargetName(w, target),
+                TargetName = intercept ? $"{unit.Name} (체공 요격)" : TargetName(w, target),
                 OverEnemyTerritory = w.BaseOf(target) is { } tb && tb.Owner != World.Player,
-                OverlapBonus = w.SortiedTargets.Any(t => AreasOverlap(t, target)),
+                OverlapBonus = !intercept && w.SortiedTargets.Any(t => AreasOverlap(t, target)),
+                Intercept = intercept,
             };
 
             // 비용
-            report.Cost = Cost(w, bal, s);
+            report.Cost = intercept ? 0 : Cost(w, bal, s);
             w.Funds -= report.Cost;
 
             // 적 교전 그룹 (기술 설계 5.4): 부대 공격은 공중 → 지상, 거점 폭격은 대공 → 시설
@@ -252,7 +313,7 @@ namespace Prototype.Strategy.Rules
             var totalInitial = groups.Sum(g => g.Initial);
 
             // 출격 기체 (순서 = 편대 순서)
-            var flying = SortieAircraft(w, bal, s).ToList();
+            var flying = intercept ? LoiterFlyers(w, s) : SortieAircraft(w, bal, s).ToList();
             var outcomes = flying.ToDictionary(a => a.Id, a => new AircraftOutcome
             {
                 AircraftId = a.Id,
@@ -262,7 +323,7 @@ namespace Prototype.Strategy.Rules
                 Fate = "—",
                 PilotFate = "—",
             });
-            report.Log.Add($"출격 {flying.Count}기, 비용 {report.Cost}. 적: {string.Join(", ", groups.Select(g => $"{g.Name} {g.Initial}"))}");
+            report.Log.Add($"{(intercept ? "체공 요격" : "출격")} {flying.Count}기, 비용 {report.Cost}. 적: {string.Join(", ", groups.Select(g => $"{g.Name} {g.Initial}"))}");
 
             var round = 0;
             while (round < bal.MaxRounds)
@@ -348,7 +409,7 @@ namespace Prototype.Strategy.Rules
                 o.DamageAfter = a?.Damage ?? 100;
                 var p = w.Pilots.FirstOrDefault(x => x.Name == o.PilotName);
                 if (p == null) continue;
-                p.Fatigue = Math.Min(100, p.Fatigue + bal.SortieFatigue);
+                p.Fatigue = Math.Min(100, p.Fatigue + (intercept ? bal.InterceptFatigue : bal.SortieFatigue));
                 o.XpBase = bal.SortieBaseXp;
                 o.XpCombat = o.Rounds * bal.XpPerRound;
                 o.XpShare = (int)Math.Round((squadronCombatXp - o.XpCombat) * bal.SortieXpShare);
@@ -362,9 +423,12 @@ namespace Prototype.Strategy.Rules
                 }
                 report.Aircraft.Add(o);
             }
-            s.SortiedThisTurn = true;
-            s.Refuel = false; // 급유는 출격 1회분
-            w.Stats.Sorties++;
+            if (!intercept)
+            {
+                s.SortiedThisTurn = true;
+                s.Refuel = false; // 급유는 출격 1회분
+                w.Stats.Sorties++;
+            }
             return report;
         }
 

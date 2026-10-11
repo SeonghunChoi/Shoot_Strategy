@@ -187,6 +187,16 @@ namespace Prototype.Strategy.Rules
         [Tune("출격·자동 정산", "경험치: 편대 공유 비율", 0f, 1f)]
         public float SortieXpShare = 0.3f;
         /// <summary>숙련도 상승에 필요한 경험치 = 현재 숙련도 × 이 값.</summary>
+        /// <summary>체공: 편대 연료 = 작전 반경 × 2 (왕복 칸 수). 왕복 + 이 값이 연료 안이면 적 턴 동안 목표 상공에 남는다.</summary>
+        [Tune("출격·체공", "체공 연료 (칸)", 0f, 6f)]
+        public int LoiterFuelCost = 2;
+        [Tune("출격·체공", "체공 감시 반경", 0f, 4f)]
+        public int LoiterRadius = 2;
+        [Tune("출격·체공", "체공 귀환 피로", 0f, 50f)]
+        public int LoiterFatigue = 10;
+        /// <summary>적이 아는 체공 지역 칸을 지날 때 경로 비용에 더하는 값 (피해 돌아감).</summary>
+        [Tune("출격·체공", "적 회피 비용 (체공 지역)", 0f, 10f)]
+        public int LoiterAvoidCost = 3;
         [Tune("출격·자동 정산", "숙련도 상승 경험치 / 숙련", 20f, 300f)]
         public int XpPerSkill = 100;
         public int MaxReturnTurns = 3;
