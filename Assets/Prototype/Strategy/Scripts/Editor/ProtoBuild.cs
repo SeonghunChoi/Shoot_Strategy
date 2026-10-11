@@ -13,9 +13,9 @@ namespace Prototype.Strategy.Editor
     public static class ProtoBuild
     {
         const string ScenePath = "Assets/Prototype/Strategy/Scenes/StrategyProto.unity";
-        const string OutputFolder = "Builds/StrategyProto";
+        const string OutputFolder = "Builds/StrategyProto_Flight";
         const string OutputPath = OutputFolder + "/StrategyProto.exe";
-        const string ZipPath = "Builds/ShootStrategyStrategy_Test.zip";
+        const string ZipPath = "Builds/ShootStrategyStrategy_Flight_Test.zip";
 
         // zip 안 이름은 ASCII로 (압축 도구에 따라 한글 파일 이름이 깨짐). Manual = 사용 설명서, TestGuide = 테스트 가이드
         static readonly (string source, string entry)[] Documents =

@@ -175,7 +175,7 @@ namespace Prototype.Strategy
             if (GUILayout.Button("턴 종료 (Enter)", GUILayout.Width(130))) Do(_boot.EndTurn);
             GUI.enabled = true;
             GUILayout.FlexibleSpace();
-            GUILayout.Label($"F1 도움말 · F2 튜닝   시드 {_boot.Seed}", ProtoGui.Small);
+            GUILayout.Label($"{StrategyBootstrap.Variant}   F1 도움말 · F2 튜닝   시드 {_boot.Seed}", ProtoGui.Small);
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
 
