@@ -7,7 +7,8 @@ namespace Prototype.Strategy.Rules
     {
         DestroyUnit, // 적 부대 X 격멸
         HoldBase,    // 거점 Y 방어 (기한까지 상실 안 함)
-        Expand,      // 영역 N칸 확대
+        UpgradeBase, // 거점 등급 올리기 (도시판, 영역 확대 대신)
+        SecureSite,  // 자원 타일 확보
     }
 
     /// <summary>상부 긴급 지시 (기획서 8.6).</summary>
@@ -17,8 +18,8 @@ namespace Prototype.Strategy.Rules
         public int TargetUnitId;
         public string TargetName;
         public int TargetBaseId;
-        public int ExpandBy;
-        public int StartHexes;
+        /// <summary>지시 시작 때의 아군 거점 등급 합 / 소유 자원 타일 수.</summary>
+        public int StartCount;
         public int Deadline; // 이 턴을 마칠 때까지
         public string Text;
     }
@@ -122,16 +123,20 @@ namespace Prototype.Strategy.Rules
                 case DirectiveType.HoldBase:
                     if (w.BaseById(d.TargetBaseId).Owner != World.Player) return false;
                     return w.Turn >= d.Deadline ? true : null;
-                case DirectiveType.Expand:
-                    return w.OwnedHexes(World.Player).Count() >= d.StartHexes + d.ExpandBy ? true : null;
+                case DirectiveType.UpgradeBase:
+                    return BaseGradeSum(w) > d.StartCount ? true : null;
+                case DirectiveType.SecureSite:
+                    return SiteRules.OwnedBy(w, World.Player).Count() > d.StartCount ? true : null;
             }
             return null;
         }
 
+        static int BaseGradeSum(World w) => w.Bases.Where(b => b.Owner == World.Player).Sum(b => b.Grade);
+
         public static Directive Issue(World w, Balance bal)
         {
             var deadline = w.Turn + bal.DirectiveDeadline;
-            var kind = w.Rng.Next(3);
+            var kind = w.Rng.Next(4);
             Directive d = null;
             if (kind == 0)
             {
@@ -149,11 +154,11 @@ namespace Prototype.Strategy.Rules
                 if (b != null)
                     d = new Directive { Type = DirectiveType.HoldBase, TargetBaseId = b.Id, TargetName = b.Name, Text = $"{b.Name} 방어" };
             }
-            d ??= new Directive
+            else if (kind == 2 && w.Sites.Any(s => s.Owner != World.Player))
             {
-                Type = DirectiveType.Expand, ExpandBy = bal.DirectiveExpandHexes, StartHexes = w.OwnedHexes(World.Player).Count(),
-                Text = $"영역 {bal.DirectiveExpandHexes}칸 확대",
-            };
+                d = new Directive { Type = DirectiveType.SecureSite, StartCount = SiteRules.OwnedBy(w, World.Player).Count(), Text = "자원 타일 1곳 추가 확보" };
+            }
+            d ??= new Directive { Type = DirectiveType.UpgradeBase, StartCount = BaseGradeSum(w), Text = "아군 거점 등급 올리기" };
             d.Deadline = deadline;
             d.Text += $" (턴 {deadline}까지)";
             w.Directive = d;

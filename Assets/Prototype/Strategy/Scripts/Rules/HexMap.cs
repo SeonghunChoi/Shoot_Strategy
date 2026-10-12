@@ -15,7 +15,7 @@ namespace Prototype.Strategy.Rules
     public struct HexCell
     {
         public TerrainType Terrain;
-        /// <summary>유전 입지 표식 (정유시설 건설 조건).</summary>
+        /// <summary>유전 표식 (도시판: 정유 자원 타일 자리).</summary>
         public bool Oil;
     }
 

@@ -8,6 +8,7 @@ namespace Prototype.Strategy.Rules
     {
         UnitAttack, // 부대 공격
         BaseBombing, // 거점 폭격
+        SiteBombing, // 자원 타일 폭격 (적 소유, 시설을 다 깨면 등급 −1)
     }
 
     public enum ExitReason
@@ -88,11 +89,12 @@ namespace Prototype.Strategy.Rules
         {
             if (w.EnemyUnitAt(h) != null && (w.VisionBalance == null || Vision.IsVisible(w, w.VisionBalance, h))) return MissionType.UnitAttack;
             if (w.BaseAt(h) is { } b && b.Owner != World.Player) return MissionType.BaseBombing;
+            if (w.SiteAt(h) is { } site && site.Owner > 0 && site.Grade > 0) return MissionType.SiteBombing;
             return null;
         }
 
         public static string TargetName(World w, Hex h) =>
-            w.EnemyUnitAt(h)?.Name ?? w.BaseAt(h)?.Name ?? h.ToString();
+            w.EnemyUnitAt(h)?.Name ?? w.BaseAt(h)?.Name ?? w.SiteAt(h)?.Name ?? h.ToString();
 
         public static IEnumerable<Aircraft> SortieAircraft(World w, Balance bal, Squadron s) =>
             s.AircraftIds.Select(w.AircraftById).Where(a => SquadronRules.CannotSortie(w, bal, a) == null);
@@ -238,13 +240,14 @@ namespace Prototype.Strategy.Rules
             var mission = intercept ? MissionType.UnitAttack : MissionAt(w, target) ?? MissionType.UnitAttack;
             var unit = intercept ? attacker : w.EnemyUnitAt(target);
             var enemyBase = intercept ? null : w.BaseAt(target);
+            var site = intercept || mission != MissionType.SiteBombing ? null : w.SiteAt(target);
             var report = new SortieReport
             {
                 SquadronName = s.Name,
                 Mission = mission,
                 Target = target,
                 TargetName = intercept ? $"{unit.Name} (적 선공)" : TargetName(w, target),
-                OverEnemyTerritory = w.BaseOf(target) is { } tb && tb.Owner != World.Player,
+                OverEnemyTerritory = w.BaseOf(target) is { } tb && tb.Owner != World.Player || w.SiteAt(target) is { Owner: > 0 },
                 OverlapBonus = !intercept && w.SortiedTargets.Any(t => AreasOverlap(t, target)),
                 EnemyInitiated = intercept,
             };
@@ -259,6 +262,13 @@ namespace Prototype.Strategy.Rules
             {
                 groups.Add(new Group { Name = "공중", Strength = unit.Air, Stat = d => d.Air });
                 groups.Add(new Group { Name = "지상", Strength = unit.Ground, Stat = d => d.Ground });
+            }
+            else if (site != null)
+            {
+                var aa = site.Grade * bal.SiteAntiAirPerGrade;
+                if (report.OverlapBonus) aa = (int)(aa * (1f - bal.OverlapAaReduction));
+                groups.Add(new Group { Name = "대공", Strength = aa, Stat = d => d.Bombing });
+                groups.Add(new Group { Name = "시설", Strength = site.Grade * bal.SiteStructurePerGrade, Stat = d => d.Bombing });
             }
             else if (enemyBase != null)
             {
@@ -348,6 +358,12 @@ namespace Prototype.Strategy.Rules
                 if (unit.Strength == 0) EnemyTurn.RemoveUnit(w, unit);
                 report.Reward = (int)(bal.BountyUnit * report.DestructionRate);
             }
+            else if (site != null)
+            {
+                // 시설을 다 깨면 등급 −1 (0이면 중립 폐허). 못 깨면 다음 폭격 때 다시 등급 기준으로 시작
+                report.Effect = groups[1].Strength == 0 ? SiteRules.Damage(w, site) : $"{site.Name} 시설 {groups[1].Strength} 남음 — 등급 유지";
+                report.Reward = (int)(bal.BountySite * report.DestructionRate);
+            }
             else if (enemyBase != null)
             {
                 // 겹침 보정으로 깎인 몫은 실제 전력에서도 빠진 것으로 본다
@@ -425,6 +441,7 @@ namespace Prototype.Strategy.Rules
         {
             MissionType.UnitAttack => "부대 공격",
             MissionType.BaseBombing => "거점 폭격",
+            MissionType.SiteBombing => "자원 폭격",
             _ => m.ToString(),
         };
     }

@@ -27,13 +27,15 @@ namespace Prototype.Strategy.Rules
     {
         public int Id;
         public string Name;
-        public Hex Hex;       // 본부 칸 (시설 불가)
+        public Hex Hex;       // 거점 칸 (도시판: 거점 = 칸 하나)
         public int Grade;
         public int Owner;     // 0 = 플레이어
         /// <summary>적 거점 방어 전력 (거점 폭격의 대공 그룹).</summary>
         public int AntiAir;
         /// <summary>적 거점 시설 전력 (거점 폭격의 시설 그룹).</summary>
         public int Structures;
+        /// <summary>거점 안의 시설 (종류마다 하나, 등급으로 키운다).</summary>
+        public readonly List<Facility> Facilities = new();
     }
 
     public sealed class GameEvent
@@ -83,9 +85,10 @@ namespace Prototype.Strategy.Rules
         public string GameOver; // null이면 진행 중
 
         public readonly List<Base> Bases = new();
-        /// <summary>영역 칸 → 소속 거점 Id (본부 칸 포함).</summary>
+        /// <summary>영역 칸 → 소속 거점 Id (거점 등급에 따라 자동, BaseRules.RefreshTerritory).</summary>
         public readonly Dictionary<Hex, int> Territory = new();
-        public readonly Dictionary<Hex, Facility> Facilities = new();
+        /// <summary>자원 타일 (정유·광산·도시).</summary>
+        public readonly List<ResourceSite> Sites = new();
         public readonly List<TurnReport> Reports = new();
 
         public readonly List<Aircraft> Aircraft = new();
@@ -161,8 +164,9 @@ namespace Prototype.Strategy.Rules
         public IEnumerable<Hex> OwnedHexes(int owner) =>
             Territory.Where(kv => BaseById(kv.Value).Owner == owner).Select(kv => kv.Key);
 
-        public IEnumerable<(Hex hex, Facility facility)> FacilitiesOf(Base b) =>
-            Facilities.Where(kv => Territory.TryGetValue(kv.Key, out var id) && id == b.Id).Select(kv => (kv.Key, kv.Value));
+        public IEnumerable<Facility> FacilitiesOf(Base b) => b.Facilities;
+
+        public ResourceSite SiteAt(Hex h) => Sites.FirstOrDefault(s => s.Hex == h);
 
         public static World Create(ulong seed, Balance balance)
         {
@@ -175,6 +179,7 @@ namespace Prototype.Strategy.Rules
                 VisionBalance = balance,
             };
             StartingSetup.Apply(world);
+            BaseRules.RefreshTerritory(world, balance);
             SquadronRules.RefreshCandidates(world, balance);
             return world;
         }

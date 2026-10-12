@@ -38,7 +38,7 @@ namespace Prototype.Strategy.Tests
             Assert.IsFalse(Vision.IsVisible(_w, _bal, Off(3, 1)));         // 영역 +2
             Assert.IsFalse(Vision.IsVisible(_w, _bal, Off(10, 6)));        // 경비대 위치
             _w.Funds = 100000;
-            BaseRules.Build(_w, _bal, Off(2, 4), FacilityType.Radar);     // 해안 기지 시야 +1
+            BaseRules.Build(_w, _bal, _w.Bases[0], FacilityType.Radar);     // 해안 기지 시야 +1
             Assert.AreEqual(2, Vision.VisionRange(_w, _bal, _w.Bases[0]));
             Assert.IsTrue(Vision.IsVisible(_w, _bal, Off(3, 1)));
             _bal.VisionEnabled = false;

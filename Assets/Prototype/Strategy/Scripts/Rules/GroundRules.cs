@@ -23,8 +23,7 @@ namespace Prototype.Strategy.Rules
     /// </summary>
     public static class GroundRules
     {
-        public static int BarracksGrade(World w, Base b) =>
-            w.FacilitiesOf(b).Where(f => f.facility.Type == FacilityType.Barracks).Select(f => f.facility.Grade).DefaultIfEmpty(0).Max();
+        public static int BarracksGrade(World w, Base b) => BaseRules.GradeOf(b, FacilityType.Barracks);
 
         public static IEnumerable<GroundUnit> StationedAt(World w, Base b) => w.GroundUnits.Where(g => !g.Deployed && g.BaseId == b.Id);
 
@@ -123,6 +122,8 @@ namespace Prototype.Strategy.Rules
                     g.Hex = step;
                     trace.Path.Add(step);
                     trace.Seen.Add(true);
+                    // 자원 타일에 들어가면 점령 (수비대 없음)
+                    if (w.SiteAt(step) is { } site) SiteRules.Capture(w, site, World.Player, g.Name);
                     if (enemyBase != null && Hex.Distance(g.Hex, target) <= 1) break;
                 }
 
@@ -181,7 +182,8 @@ namespace Prototype.Strategy.Rules
             var oldOwner = b.Owner;
             b.Owner = World.Player;
             b.Grade = Math.Max(1, b.Grade - 1);
-            foreach (var (h, _) in w.FacilitiesOf(b).Skip(BaseRules.FacilityCap(bal, b)).ToList()) w.Facilities.Remove(h);
+            BaseRules.TrimToCap(bal, b);
+            BaseRules.RefreshTerritory(w, bal);
             b.AntiAir = 0;
             b.Structures = 0;
             g.Deployed = false;

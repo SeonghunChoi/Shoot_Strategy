@@ -24,7 +24,6 @@ namespace Prototype.Strategy
 
         public static readonly Color OilColor = new(0.12f, 0.1f, 0.1f);
         public static readonly Color PlayerColor = new(0.25f, 0.6f, 1f);
-        static readonly Color RunwayColor = new(0.15f, 0.15f, 0.17f, 0.9f);
 
         readonly HexMap _map;
         readonly HexMesh _terrain;
@@ -98,19 +97,19 @@ namespace Prototype.Strategy
                 _territory.AddOutline(b.Hex, 0.62f, 0.52f, OwnerColor(b.Owner));
             }
 
-            // 활주로: 칸 중앙에 작은 표식, 같은 거점의 이웃 활주로와는 선으로 잇는다
-            foreach (var (h, f) in world.Facilities)
+            // 자원 타일: 종류 색 작은 헥스 + 소유 세력 테두리 (중립은 흰색, 폐허는 어둡게)
+            foreach (var s in world.Sites)
             {
-                if (f.Type != FacilityType.Runway) continue;
-                var c = HexLayout.ToWorld(h);
-                _territory.AddFilled(h, 0.22f, RunwayColor);
-                for (var dir = 0; dir < 3; dir++)
+                var fill = s.Type switch
                 {
-                    var n = h.Neighbor(dir);
-                    if (world.Facilities.TryGetValue(n, out var nf) && nf.Type == FacilityType.Runway &&
-                        world.Territory.TryGetValue(n, out var a) && world.Territory.TryGetValue(h, out var bId) && a == bId)
-                        _territory.AddSegment(c, HexLayout.ToWorld(n), 0.3f, RunwayColor);
-                }
+                    SiteType.Refinery => new Color(0.12f, 0.1f, 0.08f, 0.95f),
+                    SiteType.Mine => new Color(0.38f, 0.27f, 0.18f, 0.95f),
+                    _ => new Color(0.32f, 0.32f, 0.4f, 0.95f),
+                };
+                if (s.Grade == 0) fill = new Color(0.18f, 0.18f, 0.18f, 0.7f);
+                var edge = s.Owner == ResourceSite.Neutral ? new Color(0.9f, 0.9f, 0.9f, 0.9f) : OwnerColor(s.Owner);
+                _territory.AddFilled(s.Hex, 0.5f, fill);
+                _territory.AddOutline(s.Hex, 0.52f, 0.4f, edge);
             }
             // 시야 밖은 어둡게
             foreach (var h in _map.AllHexes())
@@ -221,7 +220,7 @@ namespace Prototype.Strategy
         }
 
         /// <summary>
-        /// 강조 칸(영역 확장 후보 등)과 커서·선택 테두리.
+        /// 강조 칸(출격·출동 후보 등)과 커서·선택 테두리.
         /// 강조가 없으면 선택 칸→커서 칸 직선을 보여 준다 (헥스 수학 확인용).
         /// </summary>
         /// <summary>

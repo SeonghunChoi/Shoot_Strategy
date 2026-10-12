@@ -4,6 +4,7 @@ using Prototype.Strategy.Rules;
 
 namespace Prototype.Strategy.Tests
 {
+    /// <summary>도시판 거점: 거점 = 칸 하나, 시설은 목록, 영역은 등급에 따라 자동.</summary>
     public class BaseRulesTests
     {
         Balance _bal;
@@ -26,88 +27,82 @@ namespace Prototype.Strategy.Tests
         public void StartingSetup_MatchesPlan()
         {
             Assert.AreEqual(_bal.StartingFunds, _w.Funds);
+            // 1~2등급 거점은 반경 1 자동 영역
             Assert.AreEqual(7, _w.TerritoryOf(_coast).Count());
-            Assert.AreEqual(3, _w.TerritoryOf(_south).Count());
-            Assert.AreEqual(2, BaseRules.RunwayLength(_w, _coast));
-            Assert.AreEqual(1, BaseRules.RunwayLength(_w, _south));
-            Assert.AreEqual(4, BaseRules.FacilityCount(_w, _coast)); // 활주로 2, 격납고, 정비소
+            Assert.AreEqual(7, _w.TerritoryOf(_south).Count());
+            Assert.AreEqual(2, BaseRules.MaxAircraftSize(_coast));
+            Assert.AreEqual(1, BaseRules.MaxAircraftSize(_south));
+            Assert.AreEqual(4, BaseRules.FacilityPoints(_coast)); // 활주로 2 + 격납고 1 + 정비소 1
+            Assert.AreEqual(2, SquadronRules.HangarCapacity(_w, _bal, _coast));
+            Assert.AreEqual(6, _w.Sites.Count);
+            Assert.AreEqual(4, _w.Sites.Count(s => s.Owner == ResourceSite.Neutral));
         }
 
         [Test]
-        public void RunwayLength_CountsOnlyStraightContiguousCells()
+        public void Build_UniquePerBase_GradeUnlock_SoftCap()
         {
             _w.Funds = 100000;
-            // 해안 기지 활주로 (2,3)-(3,3) 동쪽 줄. 서쪽 (1,3)은 영역 밖이라 확장 후 건설
-            BaseRules.Expand(_w, _bal, _coast, Off(1, 3));
-            BaseRules.Build(_w, _bal, Off(1, 3), FacilityType.Runway);
-            Assert.AreEqual(3, BaseRules.RunwayLength(_w, _coast));
-            Assert.AreEqual(3, BaseRules.MaxAircraftSize(_bal, 3));
-
-            // 직선이 아닌 곳에 붙여도 최장 직선은 그대로 (상한 5를 비우려고 정비소 철거)
-            BaseRules.Demolish(_w, Off(3, 5));
-            BaseRules.Build(_w, _bal, Off(2, 4), FacilityType.Runway);
-            Assert.IsTrue(_w.Facilities.ContainsKey(Off(2, 4)));
-            Assert.AreEqual(3, BaseRules.RunwayLength(_w, _coast));
-        }
-
-        [Test]
-        public void ExpandCost_GrowsWithTerritory()
-        {
-            _w.Funds = 100000;
-            var first = BaseRules.ExpandCost(_w, _bal, _coast);
-            Assert.AreEqual(_bal.ExpandBaseCost + _bal.ExpandCostPerHex * 7, first);
-            var target = BaseRules.ExpandCandidates(_w, _coast).First();
-            BaseRules.Expand(_w, _bal, _coast, target);
-            Assert.AreEqual(first + _bal.ExpandCostPerHex, BaseRules.ExpandCost(_w, _bal, _coast));
-            Assert.AreEqual(100000 - first, _w.Funds);
-        }
-
-        [Test]
-        public void Expand_RejectsNonAdjacentAndOwnedCells()
-        {
-            Assert.IsNotNull(BaseRules.CanExpand(_w, _bal, _coast, Off(10, 10)));
-            Assert.IsNotNull(BaseRules.CanExpand(_w, _bal, _coast, Off(3, 3)));
-            Assert.IsNull(BaseRules.CanExpand(_w, _bal, _coast, BaseRules.ExpandCandidates(_w, _coast).First()));
-        }
-
-        [Test]
-        public void Build_RespectsCapGradeSiteAndHq()
-        {
-            _w.Funds = 100000;
-            Assert.AreEqual("거점 본부 칸", BaseRules.CanBuild(_w, _bal, _south.Hex, FacilityType.Hangar));
-            // 남부 전초기지(1등급)는 2등급 시설 불가
-            BaseRules.Expand(_w, _bal, _south, Off(4, 8));
-            Assert.AreEqual("거점 2등급 필요", BaseRules.CanBuild(_w, _bal, Off(4, 8), FacilityType.Maintenance));
-            // 상한 3: 이미 2개 → 1개 더 짓고 나면 상한. 그다음부터는 할증 (+50%, +100% …)
+            // 남부 전초기지(1등급): 2등급 시설 불가, 같은 시설은 하나만
+            Assert.AreEqual("거점 2등급 필요", BaseRules.CanBuild(_w, _bal, _south, FacilityType.Maintenance));
+            StringAssert.Contains("이미 있음", BaseRules.CanBuild(_w, _bal, _south, FacilityType.Hangar));
+            // 상한 3, 규모 2 → 하나 더는 할증 없음, 그다음부터 +50%, +100% …
             Assert.AreEqual(150, BaseRules.BuildCost(_w, _bal, _south, FacilityType.Barracks));
-            BaseRules.Build(_w, _bal, Off(4, 8), FacilityType.Barracks);
-            BaseRules.Expand(_w, _bal, _south, Off(4, 10));
-            Assert.IsNull(BaseRules.CanBuild(_w, _bal, Off(4, 10), FacilityType.AntiAir));
+            BaseRules.Build(_w, _bal, _south, FacilityType.Barracks);
+            Assert.AreEqual(3, BaseRules.FacilityPoints(_south));
             Assert.AreEqual(180, BaseRules.BuildCost(_w, _bal, _south, FacilityType.AntiAir)); // 120 × 1.5
             var funds = _w.Funds;
-            BaseRules.Build(_w, _bal, Off(4, 10), FacilityType.AntiAir);
+            BaseRules.Build(_w, _bal, _south, FacilityType.AntiAir);
             Assert.AreEqual(funds - 180, _w.Funds);
-            Assert.AreEqual(240, BaseRules.BuildCost(_w, _bal, _south, FacilityType.AntiAir)); // 두 번째 초과 × 2.0
-            // 엄격 적용(원래 방식)이면 상한에서 막힌다
+            Assert.AreEqual(4, BaseRules.FacilityPoints(_south));
+            // 등급 상승도 규모를 늘리므로 할증: 병영 150 × 2 × 0.5 × (1 + 0.5 × 2)
+            Assert.AreEqual(300, BaseRules.FacilityUpgradeCost(_w, _bal, _south, BaseRules.Get(_south, FacilityType.Barracks)));
+            // 엄격 적용이면 상한에서 막힌다
             _bal.HardFacilityCap = true;
-            BaseRules.Expand(_w, _bal, _south, Off(5, 10));
-            Assert.AreEqual("시설 상한", BaseRules.CanBuild(_w, _bal, Off(5, 10), FacilityType.AntiAir));
-            _bal.HardFacilityCap = false;
-            // 정유시설은 유전 칸만
-            Assert.AreEqual("유전 칸 필요", BaseRules.CanBuild(_w, _bal, Off(2, 4), FacilityType.Refinery));
+            Assert.AreEqual("시설 상한", BaseRules.CanUpgradeFacility(_w, _bal, _south, FacilityType.Barracks));
         }
 
         [Test]
-        public void UpgradeBase_NeedsFacilitiesAndFunds()
+        public void Runway_GradeIsAircraftSize()
         {
             _w.Funds = 100000;
-            // 해안 기지 2→3: 정비소 있음, 레이더 없음
+            StringAssert.Contains("활주로 3등급 필요", SquadronRules.CanOperate(_w, _bal, _coast, AircraftType.B57));
+            BaseRules.UpgradeFacility(_w, _bal, _coast, FacilityType.Runway);
+            Assert.AreEqual(3, BaseRules.MaxAircraftSize(_coast));
+            Assert.AreEqual("최고 등급", BaseRules.CanUpgradeFacility(_w, _bal, _coast, FacilityType.Runway));
+            // 격납고 등급 = 편대 2 × 등급
+            BaseRules.UpgradeFacility(_w, _bal, _coast, FacilityType.Hangar);
+            Assert.AreEqual(4, SquadronRules.HangarCapacity(_w, _bal, _coast));
+            BaseRules.Demolish(_w, _coast, FacilityType.Hangar);
+            Assert.AreEqual(0, SquadronRules.HangarCapacity(_w, _bal, _coast));
+        }
+
+        [Test]
+        public void UpgradeBase_WidensTerritoryAtGrade3()
+        {
+            _w.Funds = 100000;
             StringAssert.Contains("레이더", BaseRules.CanUpgradeBase(_w, _bal, _coast));
-            BaseRules.Build(_w, _bal, Off(2, 4), FacilityType.Radar);
-            Assert.IsNull(BaseRules.CanUpgradeBase(_w, _bal, _coast));
+            BaseRules.Build(_w, _bal, _coast, FacilityType.Radar);
+            var before = _w.TerritoryOf(_coast).Count();
             BaseRules.UpgradeBase(_w, _bal, _coast);
             Assert.AreEqual(3, _coast.Grade);
             Assert.AreEqual(8, BaseRules.FacilityCap(_bal, _coast));
+            Assert.Greater(_w.TerritoryOf(_coast).Count(), before);
+            Assert.IsTrue(_w.TerritoryOf(_coast).All(h => Hex.Distance(h, _coast.Hex) <= 2));
+        }
+
+        [Test]
+        public void TrimToCap_CutsLatestFacilitiesFirst()
+        {
+            _w.Funds = 100000;
+            BaseRules.Build(_w, _bal, _south, FacilityType.Barracks);
+            BaseRules.Build(_w, _bal, _south, FacilityType.AntiAir);
+            BaseRules.UpgradeFacility(_w, _bal, _south, FacilityType.AntiAir);
+            Assert.AreEqual(5, BaseRules.FacilityPoints(_south)); // 상한 3 초과
+            var cut = BaseRules.TrimToCap(_bal, _south);
+            Assert.AreEqual(2, cut);
+            Assert.AreEqual(3, BaseRules.FacilityPoints(_south));
+            Assert.IsFalse(BaseRules.Has(_w, _south, FacilityType.AntiAir)); // 마지막에 지은 대공포부터
+            Assert.IsTrue(BaseRules.Has(_w, _south, FacilityType.Hangar));
         }
 
         [Test]
@@ -115,66 +110,113 @@ namespace Prototype.Strategy.Tests
         {
             _w.Funds = 100000;
             Assert.AreEqual("거점 본부 칸", BaseRules.CanBuildOutpost(_w, _bal, _coast.Hex));
-            StringAssert.Contains("떨어져야", BaseRules.CanBuildOutpost(_w, _bal, Off(2, 4))); // 인접 칸 불가
-            // (7,4): 해안 기지에서 거리 4 — 급유 없는 반경 3 밖이지만 급유(×2 = 6) 포함 도달 가능
+            StringAssert.Contains("떨어져야", BaseRules.CanBuildOutpost(_w, _bal, Off(2, 4)));
+            Assert.AreEqual("자원 타일", BaseRules.CanBuildOutpost(_w, _bal, _w.Sites.First(s => s.Name == "중앙 도시").Hex));
             var target = Off(7, 4);
             Assert.IsNull(BaseRules.CanBuildOutpost(_w, _bal, target));
             var cost = BaseRules.OutpostCost(_w, _bal, target);
             Assert.AreEqual(_bal.OutpostCost + _bal.OutpostCostPerDistance * 4, cost);
             var nb = BaseRules.BuildOutpost(_w, _bal, target);
             Assert.IsNotNull(nb);
-            Assert.AreEqual(1, nb.Grade);
             Assert.AreEqual(nb.Id, _w.Territory[target]);
+            Assert.AreEqual(7, _w.TerritoryOf(nb).Count(h => _w.Map.Contains(h)));
             Assert.AreEqual(100000 - cost, _w.Funds);
-            // 아무 편대도 닿지 않는 먼 칸은 불가
             StringAssert.Contains("닿지", BaseRules.CanBuildOutpost(_w, _bal, Off(15, 11)));
+        }
+    }
+
+    /// <summary>자원 타일: 수입·등급·점령(아군·적)·폭격.</summary>
+    public class SiteTests
+    {
+        Balance _bal;
+        World _w;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _bal = new Balance { VisionEnabled = false, DirectiveInterval = 1000 };
+            _w = World.Create(1, _bal);
+            _w.Funds = 100000;
+        }
+
+        ResourceSite Site(string name) => _w.Sites.Single(s => s.Name == name);
+
+        [Test]
+        public void OwnedSite_GivesIncome_UpgradeRaisesIt()
+        {
+            var oil = Site("서부 유전");
+            Assert.IsFalse(Economy.Forecast(_w, _bal).Any(l => l.Label.StartsWith("정유")));
+            Assert.AreEqual("아군 소유가 아님", SiteRules.CanUpgrade(_w, _bal, oil));
+            SiteRules.Capture(_w, oil, World.Player, "시험");
+            Assert.AreEqual(80, Economy.Forecast(_w, _bal).Single(l => l.Label.StartsWith("정유")).Amount);
+            Assert.AreEqual(300, SiteRules.UpgradeCost(_bal, oil)); // 300 × 2 × 0.5
+            SiteRules.Upgrade(_w, _bal, oil);
+            Assert.AreEqual(160, Economy.Forecast(_w, _bal).Single(l => l.Label.StartsWith("정유")).Amount);
         }
 
         [Test]
-        public void FacilityUpgrade_IncreasesRefineryIncome()
+        public void GroundUnit_EnteringSite_CapturesIt()
         {
-            _w.Funds = 100000;
-            // 유전 (5,5)를 해안 기지 영역으로
-            BaseRules.Expand(_w, _bal, _coast, Off(4, 5));
-            BaseRules.Expand(_w, _bal, _coast, Off(5, 5));
-            BaseRules.Build(_w, _bal, Off(5, 5), FacilityType.Refinery);
-            Assert.AreEqual(80, Economy.Forecast(_w, _bal).Single(l => l.Label == "정유시설").Amount);
-            BaseRules.UpgradeFacility(_w, _bal, Off(5, 5));
-            Assert.AreEqual(160, Economy.Forecast(_w, _bal).Single(l => l.Label == "정유시설").Amount);
+            var city = Site("남부 마을");
+            var g = new GroundUnit { Id = _w.NextId++, Name = "지상군 1", BaseId = _w.Bases[1].Id, Hex = city.Hex.Neighbor(3), Strength = 20, Deployed = true, Target = city.Hex };
+            _w.GroundUnits.Add(g);
+            GroundRules.MovePhase(_w, _bal);
+            Assert.AreEqual(city.Hex, g.Hex);
+            Assert.AreEqual(World.Player, city.Owner);
+        }
+
+        [Test]
+        public void EnemyUnit_GoesForValuableSite_AndCapturesIt()
+        {
+            var mine = Site("중부 광산");
+            mine.Grade = 3;
+            foreach (var u in _w.EnemyUnits.Skip(1).ToList()) _w.EnemyUnits.Remove(u);
+            var a = _w.EnemyUnits[0];
+            a.Hex = mine.Hex.Neighbor(0);
+            Economy.EndTurn(_w, _bal);
+            Assert.AreEqual(a.Owner, mine.Owner);
+            Assert.AreEqual(mine.Hex, a.Hex);
+        }
+
+        [Test]
+        public void Bombing_BreaksStructures_DropsGrade()
+        {
+            _bal.SiteStructurePerGrade = 2;
+            _bal.SiteAntiAirPerGrade = 1;
+            var oil = Site("동부 유전");
+            Assert.AreEqual(MissionType.SiteBombing, SortieRules.MissionAt(_w, oil.Hex));
+            var rep = SortieRules.Resolve(_w, _bal, _w.Squadrons[0], oil.Hex);
+            Assert.AreEqual(1, oil.Grade);
+            Assert.IsTrue(rep.OverEnemyTerritory);
+            StringAssert.Contains("등급 2 → 1", rep.Effect);
+            // 0등급이 되면 중립 폐허, 더는 폭격 목표가 아님
+            SiteRules.Damage(_w, oil);
+            Assert.AreEqual(ResourceSite.Neutral, oil.Owner);
+            Assert.IsNull(SortieRules.MissionAt(_w, oil.Hex));
+        }
+
+        [Test]
+        public void EnemySites_SpeedUpReinforcements()
+        {
+            // 동부군은 동부 유전(2등급)을 가지고 시작 → 6 − 1 = 5턴마다 보충
+            var east = _w.Factions.First(f => f.Id == 1);
+            _w.EnemyUnits.Clear(); // 부대가 다른 타일을 점령해 주기가 더 줄지 않게
+            for (var i = 0; i < 4; i++) Economy.EndTurn(_w, _bal);
+            Assert.AreEqual(4, east.ReinforceTimer);
+            Economy.EndTurn(_w, _bal);
+            Assert.AreEqual(0, east.ReinforceTimer);
         }
     }
 
     public class EconomyTests
     {
         [Test]
-        public void Finance_FlatPlusInterest_UpgradeRaisesNet()
-        {
-            var bal = new Balance();
-            var w = World.Create(1, bal);
-            var coast = w.Bases[0];
-            var h = w.TerritoryOf(coast).First(x => x != coast.Hex && !w.Facilities.ContainsKey(x));
-            var f = new Facility { Type = FacilityType.Finance, Grade = 2 };
-            w.Facilities[h] = f;
-            w.Funds = 2000;
-
-            var lines = Economy.Forecast(w, bal);
-            Assert.AreEqual(bal.FinanceFlatPerGrade * 2, lines.Single(l => l.Label == "금융 수입").Amount);
-            Assert.AreEqual((int)(2000 * bal.FinanceRatePerGrade * 2), lines.Single(l => l.Label == "금융 이자").Amount);
-
-            // 예전에는 자금 2000에서 2→3등급(비용 750)을 올리면 이자 120 → 112로 줄었다. 고정 수입으로 늘어나야 한다
-            var before = Economy.Net(lines);
-            BaseRules.UpgradeFacility(w, bal, h);
-            Assert.AreEqual(3, f.Grade);
-            Assert.Greater(Economy.Net(Economy.Forecast(w, bal)), before);
-        }
-
-        [Test]
         public void Forecast_IsBudgetMinusUpkeep()
         {
             var bal = new Balance();
             var w = World.Create(1, bal);
-            // 영역 10칸 × 유지비, 급여 네임드 80 + 일반 40 × 3 = 200
-            Assert.AreEqual(bal.HqBudget - 10 * bal.UpkeepPerHex - 200, Economy.Net(Economy.Forecast(w, bal)));
+            // 거점 유지비 = 등급 합 3 × 25, 급여 네임드 80 + 일반 40 × 3 = 200
+            Assert.AreEqual(bal.HqBudget - 3 * bal.UpkeepPerBaseGrade - 200, Economy.Net(Economy.Forecast(w, bal)));
         }
 
         [Test]
@@ -194,13 +236,13 @@ namespace Prototype.Strategy.Tests
         {
             var bal = new Balance { HqBudget = 0 };
             var w = World.Create(1, bal);
-            w.Funds = 50; // 턴마다 −100
+            w.Funds = 50;
 
-            Economy.EndTurn(w, bal); // −50 → 적자 1
+            Economy.EndTurn(w, bal);
             Assert.AreEqual(1, w.DeficitStreak);
-            Economy.EndTurn(w, bal); // 적자 2
+            Economy.EndTurn(w, bal);
             Assert.IsNull(w.GameOver);
-            Economy.EndTurn(w, bal); // 적자 3 → 파산
+            Economy.EndTurn(w, bal);
             Assert.IsNotNull(w.GameOver);
             Assert.IsNull(Economy.EndTurn(w, bal));
         }
@@ -210,8 +252,8 @@ namespace Prototype.Strategy.Tests
         {
             var bal = new Balance();
             var w = World.Create(1, bal);
-            w.Pilots.Clear();  // 급여 없음 → 순 +200
-            w.Funds = -150;    // +200이면 0 이상으로 회복
+            w.Pilots.Clear();
+            w.Funds = -150;
             Economy.EndTurn(w, bal);
             Assert.AreEqual(0, w.DeficitStreak);
         }

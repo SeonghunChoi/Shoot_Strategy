@@ -35,7 +35,7 @@ namespace Prototype.Strategy.Tests
             _s1.Refuel = false;
             // 보급창고 +1 → 4
             _w.Funds = 100000;
-            BaseRules.Build(_w, _bal, Hex.FromOffset(2, 4), FacilityType.Depot);
+            BaseRules.Build(_w, _bal, _w.Bases[0], FacilityType.Depot);
             Assert.AreEqual(4, SquadronRules.OperationRadius(_w, _bal, _s1));
             CollectionAssert.Contains(SortieRules.Targets(_w, _bal, _s1).ToList(), _unitA);
         }
@@ -46,7 +46,7 @@ namespace Prototype.Strategy.Tests
             // 1편대: F-5(소형 30) + A-4(소형 30) = 60
             Assert.AreEqual(60, SortieRules.Cost(_w, _bal, _s1));
             _w.Funds = 100000;
-            BaseRules.Build(_w, _bal, Hex.FromOffset(2, 4), FacilityType.Depot);
+            BaseRules.Build(_w, _bal, _w.Bases[0], FacilityType.Depot);
             Assert.AreEqual(48, SortieRules.Cost(_w, _bal, _s1));
         }
 

@@ -50,12 +50,8 @@ namespace Prototype.Strategy.Rules
 
         /// <summary>대공 시설 방어력 (대공포 등급 × 5, SAM 등급 × 10).</summary>
         public static int FacilityDefense(World w, Balance bal, Base b) =>
-            w.FacilitiesOf(b).Sum(x => x.facility.Type switch
-            {
-                FacilityType.AntiAir => x.facility.Grade * bal.AntiAirDefensePerGrade,
-                FacilityType.Sam => x.facility.Grade * bal.SamDefensePerGrade,
-                _ => 0,
-            });
+            BaseRules.GradeOf(b, FacilityType.AntiAir) * bal.AntiAirDefensePerGrade +
+            BaseRules.GradeOf(b, FacilityType.Sam) * bal.SamDefensePerGrade;
 
         /// <summary>세력이 이 거점의 주둔 편대 수를 아는가 (세력 부대·거점의 탐지 범위 안).</summary>
         public static bool FactionSees(World w, Balance bal, Faction f, Hex h) =>
@@ -138,6 +134,8 @@ namespace Prototype.Strategy.Rules
                     u.Hex = step;
                     trace.Path.Add(step);
                     trace.Seen.Add(Vision.IsVisible(w, bal, step));
+                    // 자원 타일에 들어가면 점령 (수비대 없음)
+                    if (w.SiteAt(step) is { } site) SiteRules.Capture(w, site, u.Owner, u.Name);
                     if (FlightContact(w, bal, u)) return;
                 }
                 if (Vision.IsVisible(w, bal, u.Hex)) w.EnemyEvents.Add($"{u.Name} 이동 → {u.Hex.ToOffset()}");
@@ -154,7 +152,13 @@ namespace Prototype.Strategy.Rules
             switch (stance)
             {
                 case Stance.Offensive:
-                    return BestTarget(w, bal, f, u)?.Hex;
+                {
+                    // 아군 거점과 자원 타일 중 점수가 높은 쪽 (적도 자원을 노린다)
+                    var (b, bs) = BestBase(w, bal, f, u);
+                    var (site, ss) = BestSite(w, f, u);
+                    if (site != null && (b == null || ss > bs)) return site.Hex;
+                    return b?.Hex;
+                }
                 case Stance.Defensive:
                     return home != null && Hex.Distance(home.Hex, u.Hex) > 1 ? home.Hex : null;
                 case Stance.Regroup:
@@ -190,6 +194,7 @@ namespace Prototype.Strategy.Rules
             rest = new List<Hex>();
             var path = HexPath.Find(w.Map, bal, from, goal);
             if (path == null) return steps;
+            var enterGoal = w.SiteAt(goal) != null; // 자원 타일은 칸에 들어가야 점령
             var points = bal.EnemyMovePoints;
             var stopped = false;
             foreach (var step in path)
@@ -206,7 +211,7 @@ namespace Prototype.Strategy.Rules
                     {
                         points -= cost;
                         steps.Add(step);
-                        if (stance == Stance.Offensive && Hex.Distance(step, goal) <= 1) stopped = true;
+                        if (stance == Stance.Offensive && !enterGoal && Hex.Distance(step, goal) <= 1) stopped = true;
                         continue;
                     }
                 }
@@ -236,7 +241,7 @@ namespace Prototype.Strategy.Rules
             if (p.EngageGround != null) return p;
             p.Goal = ChooseGoal(w, bal, f, u, p.Stance);
             if (p.Goal is not { } goal) return p;
-            p.GoalName = w.BaseAt(goal)?.Name ?? goal.ToOffset().ToString();
+            p.GoalName = w.BaseAt(goal)?.Name ?? w.SiteAt(goal)?.Name ?? goal.ToOffset().ToString();
             if (!(p.Stance == Stance.Offensive && Hex.Distance(u.Hex, goal) <= 1))
                 p.ThisTurn = StepsThisTurn(w, bal, f, u.Hex, goal, p.Stance, out p.Later);
             var end = p.ThisTurn.Count > 0 ? p.ThisTurn[^1] : u.Hex;
@@ -246,13 +251,33 @@ namespace Prototype.Strategy.Rules
         }
 
         /// <summary>공세 목표: 가치(등급·시설) ÷ 거리 ÷ 알려진 방어. 편대 수는 탐지 범위 안일 때만 반영.</summary>
-        public static Base BestTarget(World w, Balance bal, Faction f, EnemyUnit u)
+        public static Base BestTarget(World w, Balance bal, Faction f, EnemyUnit u) => BestBase(w, bal, f, u).b;
+
+        /// <summary>자원 타일 목표: 다른 세력 소유·중립 타일, 가치(등급) ÷ 거리. 수비대가 없어 방어는 보지 않는다. 아군 타일은 조금 더 노린다.</summary>
+        public static (ResourceSite site, float score) BestSite(World w, Faction f, EnemyUnit u)
+        {
+            ResourceSite best = null;
+            var bestScore = float.MinValue;
+            foreach (var s in w.Sites.Where(x => x.Owner != f.Id))
+            {
+                var value = Math.Max(1, s.Grade) * 8f * (s.Owner == World.Player ? 1.2f : 1f);
+                var score = value / (1f + Hex.Distance(u.Hex, s.Hex) * 0.3f);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = s;
+                }
+            }
+            return (best, bestScore);
+        }
+
+        static (Base b, float score) BestBase(World w, Balance bal, Faction f, EnemyUnit u)
         {
             Base best = null;
             var bestScore = float.MinValue;
             foreach (var b in w.Bases.Where(x => x.Owner == World.Player))
             {
-                var value = b.Grade * 10f + BaseRules.FacilityCount(w, b) * 3f;
+                var value = b.Grade * 10f + BaseRules.FacilityPoints(b) * 3f;
                 var defense = FacilityDefense(w, bal, b);
                 if (FactionSees(w, bal, f, b.Hex)) defense += (int)(w.SquadronsAt(b).Where(s => s.AirHex == null).Sum(s => s.AircraftIds.Count) * bal.KnownAircraftDefenseWeight);
                 var dist = Hex.Distance(u.Hex, b.Hex);
@@ -263,7 +288,7 @@ namespace Prototype.Strategy.Rules
                     best = b;
                 }
             }
-            return best;
+            return (best, bestScore);
         }
 
         // ---- 피습·요격·거점 상실 ----
@@ -375,15 +400,9 @@ namespace Prototype.Strategy.Rules
             }
             target.Owner = f.Id;
             target.Grade = Math.Max(1, target.Grade - 1);
-            var cap = BaseRules.FacilityCap(bal, target);
-            var facilities = w.FacilitiesOf(target).ToList();
-            var destroyed = 0;
-            foreach (var (h, _) in facilities.Skip(cap))
-            {
-                w.Facilities.Remove(h);
-                destroyed++;
-            }
-            if (destroyed > 0) rep.Log.Add($"   등급 {target.Grade + 1} → {target.Grade}, 상한 초과 시설 {destroyed}개 파괴");
+            var destroyed = BaseRules.TrimToCap(bal, target);
+            BaseRules.RefreshTerritory(w, bal);
+            if (destroyed > 0) rep.Log.Add($"   등급 {target.Grade + 1} → {target.Grade}, 상한 초과 시설 규모 {destroyed} 파괴");
             else rep.Log.Add($"   등급 {target.Grade + 1} → {target.Grade}");
 
             foreach (var s in w.SquadronsAt(target).ToList())
@@ -420,7 +439,7 @@ namespace Prototype.Strategy.Rules
             }
             // 적 거점으로 전환: 방어 수치 부여, 부대는 주둔
             target.AntiAir = FacilityDefense(w, bal, target) + bal.CapturedBaseAntiAir;
-            target.Structures = BaseRules.FacilityCount(w, target) * 10 + 10;
+            target.Structures = BaseRules.FacilityPoints(target) * 10 + 10;
             u.Hex = target.Hex;
             u.Goal = null;
         }
@@ -499,7 +518,9 @@ namespace Prototype.Strategy.Rules
                 var bases = BasesOf(w, f).ToList();
                 if (bases.Count == 0) continue;
                 f.ReinforceTimer++;
-                if (f.ReinforceTimer >= bal.ReinforceTurns)
+                // 가진 자원 타일(1등급 이상)마다 보충이 1턴 빨라진다 (최소 2턴)
+                var need = Math.Max(2, bal.ReinforceTurns - SiteRules.OwnedBy(w, f.Id).Count(x => x.Grade > 0));
+                if (f.ReinforceTimer >= need)
                 {
                     f.ReinforceTimer = 0;
                     var b = bases[w.Rng.Next(bases.Count)];

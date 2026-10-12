@@ -100,7 +100,7 @@ namespace Prototype.Strategy.Tests
             Assert.AreEqual(35, a.Damage);
             Assert.AreEqual(60, p.Fatigue);
             Assert.IsTrue(report.Lines.Any(l => l.Label.StartsWith("기체 수리")));
-            var baseNet = _bal.HqBudget - 10 * _bal.UpkeepPerHex - 200; // 예산 − 영역 10칸 유지비 − 급여
+            var baseNet = _bal.HqBudget - 3 * _bal.UpkeepPerBaseGrade - 200; // 예산 − 거점 등급 합 3 유지비 − 급여
             Assert.AreEqual(fundsBefore + baseNet - cost, _w.Funds);
         }
 
@@ -108,7 +108,7 @@ namespace Prototype.Strategy.Tests
         public void Entertainment_RefundsSalaryAndSpeedsRecovery()
         {
             _w.Funds = 100000;
-            BaseRules.Build(_w, _bal, Hex.FromOffset(2, 4), FacilityType.Entertainment);
+            BaseRules.Build(_w, _bal, _w.Bases[0], FacilityType.Entertainment);
             // 해안 기지 주둔 파일럿: 네임드 80 + 일반 40 ×2 = 160 × 15% = 24
             Assert.AreEqual(24, SquadronRules.EntertainmentRefund(_w, _bal));
             var p = _w.PilotById(_w.AircraftById(_w.Squadrons[0].AircraftIds[0]).PilotId);

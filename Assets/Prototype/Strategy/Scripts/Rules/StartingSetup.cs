@@ -5,20 +5,16 @@ namespace Prototype.Strategy.Rules
     {
         public static void Apply(World world)
         {
-            // 해안 기지: 등급 2, 반경 1 영역. 활주로 2칸 직선(북쪽 두 칸), 격납고, 정비소
+            // 해안 기지: 등급 2. 활주로 2등급(중형), 격납고, 정비소 — 영역은 등급에 따라 자동
             var coast = AddBase(world, "해안 기지", 3, 4, grade: 2);
-            foreach (var h in Hex.Range(coast.Hex, 1)) world.Territory[h] = coast.Id;
-            Put(world, 2, 3, FacilityType.Runway);
-            Put(world, 3, 3, FacilityType.Runway);
-            Put(world, 4, 4, FacilityType.Hangar);
-            Put(world, 3, 5, FacilityType.Maintenance);
+            Put(coast, FacilityType.Runway, 2);
+            Put(coast, FacilityType.Hangar);
+            Put(coast, FacilityType.Maintenance);
 
-            // 남부 전초기지: 등급 1, 3칸 영역. 격납고, 활주로 1칸
+            // 남부 전초기지: 등급 1. 격납고, 활주로 1등급
             var south = AddBase(world, "남부 전초기지", 4, 9, grade: 1);
-            world.Territory[Hex.FromOffset(3, 9)] = south.Id;
-            world.Territory[Hex.FromOffset(5, 9)] = south.Id;
-            Put(world, 3, 9, FacilityType.Hangar);
-            Put(world, 5, 9, FacilityType.Runway);
+            Put(south, FacilityType.Hangar);
+            Put(south, FacilityType.Runway);
 
             // 기체 F-5 ×2, A-4 ×1 / 파일럿 네임드 1 + 일반 3 / 편대 2개 (해안 기지에 1·2편대)
             var f5a = SquadronRules.AddAircraft(world, AircraftType.F5);
@@ -44,7 +40,6 @@ namespace Prototype.Strategy.Rules
             east.Owner = 1;
             east.AntiAir = 20;
             east.Structures = 30;
-            foreach (var h in Hex.Range(east.Hex, 1)) world.Territory[h] = east.Id;
             world.GoalBaseId = east.Id; // 상부 장기 목표: 동부군 전진 기지 점령 (승리 조건)
             world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "동부군 A부대", Hex = Hex.FromOffset(6, 3), Air = 15, Ground = 10, Owner = 1 });
             world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "동부군 B부대", Hex = Hex.FromOffset(8, 10), Air = 8, Ground = 20, Owner = 1 });
@@ -57,9 +52,16 @@ namespace Prototype.Strategy.Rules
             north.Owner = 2;
             north.AntiAir = 15;
             north.Structures = 25;
-            foreach (var h in Hex.Range(north.Hex, 1)) if (world.Map.Contains(h)) world.Territory[h] = north.Id;
             world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "북부군 1부대", Hex = Hex.FromOffset(11, 3), Air = 12, Ground = 12, Owner = 2 });
             world.EnemyUnits.Add(new EnemyUnit { Id = world.NextId++, Name = "북부군 2부대", Hex = Hex.FromOffset(13, 3), Air = 6, Ground = 16, Owner = 2 });
+
+            // 자원 타일: 맵의 유전·산악·평지. 대부분 중립, 적 기지 근처 두 곳만 적 소유 (지상군이 들어가면 점령)
+            AddSite(world, SiteType.Refinery, "서부 유전", 5, 5, grade: 1, ResourceSite.Neutral);
+            AddSite(world, SiteType.Refinery, "동부 유전", 15, 5, grade: 2, owner: 1);
+            AddSite(world, SiteType.Mine, "중부 광산", 7, 7, grade: 1, ResourceSite.Neutral);
+            AddSite(world, SiteType.Mine, "북부 광산", 10, 1, grade: 1, owner: 2);
+            AddSite(world, SiteType.City, "남부 마을", 6, 9, grade: 1, ResourceSite.Neutral);
+            AddSite(world, SiteType.City, "중앙 도시", 9, 4, grade: 2, ResourceSite.Neutral);
         }
 
         static Base AddBase(World world, string name, int col, int row, int grade)
@@ -73,11 +75,12 @@ namespace Prototype.Strategy.Rules
                 Owner = World.Player,
             };
             world.Bases.Add(b);
-            world.Territory[b.Hex] = b.Id;
             return b;
         }
 
-        static void Put(World world, int col, int row, FacilityType type) =>
-            world.Facilities[Hex.FromOffset(col, row)] = new Facility { Type = type };
+        static void Put(Base b, FacilityType type, int grade = 1) => b.Facilities.Add(new Facility { Type = type, Grade = grade });
+
+        static void AddSite(World world, SiteType type, string name, int col, int row, int grade, int owner) =>
+            world.Sites.Add(new ResourceSite { Id = world.NextId++, Type = type, Name = name, Hex = Hex.FromOffset(col, row), Grade = grade, Owner = owner });
     }
 }

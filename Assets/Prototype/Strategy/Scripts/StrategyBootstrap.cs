@@ -22,7 +22,6 @@ namespace Prototype.Strategy
     [DefaultExecutionOrder(-1000)]
     public sealed class StrategyBootstrap : MonoBehaviour
     {
-        static readonly Color ExpandColor = new(1f, 1f, 1f, 0.35f);
         static readonly Color RadiusColor = new(0.3f, 0.75f, 1f, 0.35f);
         static readonly Color MoveColor = new(0.4f, 1f, 0.5f, 0.4f);
         static readonly Color TargetColor = new(1f, 0.6f, 0.15f, 0.45f);
@@ -30,7 +29,7 @@ namespace Prototype.Strategy
         static readonly Color GroundColor = new(0.45f, 0.9f, 0.35f, 0.45f);
 
         /// <summary>테스트 빌드 구분 (두 버전을 함께 배포해 비교).</summary>
-        public const string Variant = "비행판 (C)";
+        public const string Variant = "도시판";
 
         [SerializeField] ulong seed = 20260930;
 
@@ -42,8 +41,6 @@ namespace Prototype.Strategy
         public Hex? Selected { get; set; }
         public PanelTab Tab { get; set; }
 
-        /// <summary>영역 확장 모드인 거점 (null이면 일반 모드).</summary>
-        public Base ExpandBase { get; private set; }
         /// <summary>격납고 패널에서 고른 편대 (작전 반경 표시).</summary>
         public int SelectedSquadronId { get; set; }
         /// <summary>재배치 목적지를 고르는 중인 편대 (null이면 아님).</summary>
@@ -76,7 +73,6 @@ namespace Prototype.Strategy
         StrategyControls _controls;
         HexMapView _view;
         StrategyHud _hud;
-        readonly List<Hex> _expandCandidates = new();
         readonly List<Hex> _targetCandidates = new();
         readonly List<Hex> _outpostCandidates = new();
         readonly List<Hex> _highlight = new();
@@ -143,7 +139,6 @@ namespace Prototype.Strategy
 
         void ClearModes()
         {
-            ExpandBase = null;
             MovingSquadron = null;
             TargetPickSquadron = null;
             OutpostMode = false;
@@ -198,14 +193,6 @@ namespace Prototype.Strategy
             ShowEnemyReport = false;
             Playback.Start(World.Traces, () => ShowEnemyReport = showReport);
         }
-
-        public void StartExpand(Base b)
-        {
-            ClearModes();
-            ExpandBase = b;
-        }
-
-        public void StopExpand() => ExpandBase = null;
 
         public void StartMove(Squadron s)
         {
@@ -285,9 +272,6 @@ namespace Prototype.Strategy
             Cursor.Tick(mouse, _controls.PadCursor.ReadValue<Vector2>(), dt, overUi);
             MapCamera.ZoomPad(_controls.PadZoom.ReadValue<float>(), dt, MapCamera.WorldToScreen(Cursor.World));
 
-            _expandCandidates.Clear();
-            if (ExpandBase != null && World.GameOver == null)
-                _expandCandidates.AddRange(BaseRules.ExpandCandidates(World, ExpandBase));
             _outpostCandidates.Clear();
             if (OutpostMode && World.GameOver == null)
                 _outpostCandidates.AddRange(BaseRules.OutpostCandidates(World, Balance));
@@ -311,7 +295,7 @@ namespace Prototype.Strategy
                 else if (ShowDebrief) ShowDebrief = false;
                 else if (_hud.HasPadFocus) _hud.PadFocusClear();
                 else if (ShowHq) ShowHq = false;
-                else if (ExpandBase != null || MovingSquadron != null || TargetPickSquadron != null || OutpostMode || GroundPick != null) ClearModes();
+                else if (MovingSquadron != null || TargetPickSquadron != null || OutpostMode || GroundPick != null) ClearModes();
                 else Selected = null;
             }
 
@@ -333,7 +317,7 @@ namespace Prototype.Strategy
             _view.UpdatePrediction(SelectedEnemy, SelectedEnemyPrediction);
         }
 
-        /// <summary>맵 강조: 전초기지 후보 > 출격 목표 후보 > 재배치 후보 거점 > 확장 후보 > 선택 편대의 작전 반경.</summary>
+        /// <summary>맵 강조: 전초기지 후보 > 출격 목표 후보 > 재배치 후보 거점 > 선택 편대의 작전 반경.</summary>
         void BuildHighlight(out Color color)
         {
             _highlight.Clear();
@@ -343,6 +327,9 @@ namespace Prototype.Strategy
                 color = GroundColor;
                 foreach (var b in World.Bases)
                     if (GroundRules.CanDeploy(World, Balance, GroundPick, b.Hex) == null) _highlight.Add(b.Hex);
+                // 남의 자원 타일 (들어가면 점령)
+                foreach (var site in World.Sites)
+                    if (site.Owner != World.Player && GroundRules.CanDeploy(World, Balance, GroundPick, site.Hex) == null) _highlight.Add(site.Hex);
                 return;
             }
             if (OutpostMode)
@@ -362,12 +349,6 @@ namespace Prototype.Strategy
                 color = MoveColor;
                 foreach (var b in World.Bases)
                     if (SquadronRules.CanMove(World, Balance, MovingSquadron, b) == null) _highlight.Add(b.Hex);
-                return;
-            }
-            if (_expandCandidates.Count > 0)
-            {
-                color = ExpandColor;
-                _highlight.AddRange(_expandCandidates);
                 return;
             }
             color = RadiusColor;
@@ -429,13 +410,6 @@ namespace Prototype.Strategy
                 MovingSquadron = null;
                 return;
             }
-            if (ExpandBase != null)
-            {
-                // 확장 모드: 후보 칸을 누르면 확장하고 모드를 유지, 그 밖을 누르면 모드 종료
-                if (hover is { } h && _expandCandidates.Contains(h)) BaseRules.Expand(World, Balance, ExpandBase, h);
-                else ExpandBase = null;
-                return;
-            }
             Selected = hover;
             // 비행 중 편대 칸을 고르면 그 편대를 출격 탭에서
             if (hover is { } fh && World.Squadrons.FirstOrDefault(x => x.AirHex == fh) is { } flying)
@@ -444,12 +418,9 @@ namespace Prototype.Strategy
                 Tab = PanelTab.Sortie;
                 return;
             }
-            // 거점 칸을 고르면 거점 탭으로 (격납고·출격을 보던 중이면 유지)
-            if (hover is { } hx && World.BaseOf(hx) is { Owner: World.Player } && Tab != PanelTab.Hangar && Tab != PanelTab.Sortie) Tab = PanelTab.Base;
+            // 거점·자원 타일 칸을 고르면 거점 탭으로 (격납고·출격을 보던 중이면 유지)
+            if (hover is { } hx && (World.BaseOf(hx) is { Owner: World.Player } || World.SiteAt(hx) != null) && Tab != PanelTab.Hangar && Tab != PanelTab.Sortie) Tab = PanelTab.Base;
         }
-
-        /// <summary>확장 후보 칸 (HUD가 비용 표시에 사용).</summary>
-        public IReadOnlyList<Hex> ExpandCandidates => _expandCandidates;
 
         static string ResultName(World w)
         {

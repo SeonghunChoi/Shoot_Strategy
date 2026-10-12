@@ -24,8 +24,7 @@ namespace Prototype.Strategy.Rules
         /// <summary>거점 영역 밖으로 보이는 칸 수 = 기본 + 레이더 등급 × 등급당 칸.</summary>
         public static int VisionRange(World w, Balance bal, Base b)
         {
-            var radar = w.FacilitiesOf(b).Where(x => x.facility.Type == FacilityType.Radar)
-                .Select(x => x.facility.Grade).DefaultIfEmpty(0).Max();
+            var radar = BaseRules.GradeOf(b, FacilityType.Radar);
             return bal.TerritoryVisionRange + radar * bal.RadarRangePerGrade;
         }
 
@@ -44,6 +43,8 @@ namespace Prototype.Strategy.Rules
                 foreach (var h in w.TerritoryOf(b))
                     foreach (var r in Hex.Range(h, range)) if (w.Map.Contains(r)) set.Add(r);
             }
+            foreach (var s in SiteRules.OwnedBy(w, World.Player))
+                foreach (var r in Hex.Range(s.Hex, bal.SiteVisionRange)) if (w.Map.Contains(r)) set.Add(r);
             foreach (var g in w.GroundUnits.Where(x => x.Deployed))
                 foreach (var r in Hex.Range(g.Hex, bal.GroundVisionRange)) if (w.Map.Contains(r)) set.Add(r);
             foreach (var s in w.Squadrons)

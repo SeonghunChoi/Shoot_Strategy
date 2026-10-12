@@ -5,51 +5,27 @@ using System.Linq;
 namespace Prototype.Strategy.Rules
 {
     /// <summary>
-    /// 거점·영역·시설 명령 (기획서 5장). 무상태 서비스.
+    /// 거점·시설 명령 (도시판: 거점 = 칸 하나, 시설은 거점 안의 목록). 무상태 서비스.
     /// Can*은 불가 사유를 돌려주고(가능하면 null), 실행 함수는 Can*이 통과했을 때만 상태를 바꾼다.
+    /// 영역은 직접 넓히지 않고 거점 등급에 따라 자동으로 정해진다 (RefreshTerritory).
     /// </summary>
     public static class BaseRules
     {
         // ---- 조회 ----
 
-        public static int FacilityCount(World w, Base b) => w.FacilitiesOf(b).Count();
+        public static Facility Get(Base b, FacilityType type) => b.Facilities.FirstOrDefault(f => f.Type == type);
+
+        public static bool Has(World w, Base b, FacilityType type) => Get(b, type) != null;
+
+        public static int GradeOf(Base b, FacilityType type) => Get(b, type)?.Grade ?? 0;
+
+        /// <summary>시설 규모 = 등급 합 (등급 없는 시설은 1). 거점 등급별 상한과 비교한다.</summary>
+        public static int FacilityPoints(Base b) => b.Facilities.Sum(f => f.Grade);
 
         public static int FacilityCap(Balance bal, Base b) => bal.FacilityCap[Math.Min(b.Grade, bal.FacilityCap.Length - 1)];
 
-        public static bool Has(World w, Base b, FacilityType type) => w.FacilitiesOf(b).Any(f => f.facility.Type == type);
-
-        /// <summary>거점 영역 안 활주로의 가장 긴 직선 연속 칸 수 (기획서 5.4.2).</summary>
-        public static int RunwayLength(World w, Base b)
-        {
-            bool IsRunway(Hex h) =>
-                w.Territory.TryGetValue(h, out var id) && id == b.Id &&
-                w.Facilities.TryGetValue(h, out var f) && f.Type == FacilityType.Runway;
-
-            var best = 0;
-            foreach (var (h, f) in w.FacilitiesOf(b))
-            {
-                if (f.Type != FacilityType.Runway) continue;
-                best = Math.Max(best, 1);
-                // 세 축 방향마다 줄의 시작 칸에서만 센다
-                for (var dir = 0; dir < 3; dir++)
-                {
-                    if (IsRunway(h.Neighbor(dir + 3))) continue;
-                    var n = 1;
-                    for (var c = h.Neighbor(dir); IsRunway(c); c = c.Neighbor(dir)) n++;
-                    best = Math.Max(best, n);
-                }
-            }
-            return best;
-        }
-
-        /// <summary>활주로 길이로 운용 가능한 최대 기체 크기 (0 없음, 1 소형, 2 중형, 3 대형).</summary>
-        public static int MaxAircraftSize(Balance bal, int runwayLength)
-        {
-            var size = 0;
-            for (var s = 1; s < bal.RunwayForSize.Length; s++)
-                if (runwayLength >= bal.RunwayForSize[s]) size = s;
-            return size;
-        }
+        /// <summary>활주로 등급 = 운용 가능한 최대 기체 크기 (0 없음, 1 소형, 2 중형, 3 대형).</summary>
+        public static int MaxAircraftSize(Base b) => GradeOf(b, FacilityType.Runway);
 
         public static string SizeName(int size) => size switch
         {
@@ -59,98 +35,110 @@ namespace Prototype.Strategy.Rules
             _ => "대형",
         };
 
-        // ---- 영역 확장 ----
+        // ---- 영역 (자동) ----
 
-        public static int ExpandCost(World w, Balance bal, Base b) =>
-            bal.ExpandBaseCost + bal.ExpandCostPerHex * w.TerritoryOf(b).Count();
+        public static int TerritoryRadius(Balance bal, Base b) => bal.TerritoryRadiusByGrade[Math.Min(b.Grade, bal.TerritoryRadiusByGrade.Length - 1)];
 
-        /// <summary>b의 영역에 맞닿은 빈 칸 (다른 영역이 아닌 맵 안의 칸).</summary>
-        public static IEnumerable<Hex> ExpandCandidates(World w, Base b) =>
-            w.TerritoryOf(b)
-                .SelectMany(h => h.Neighbors())
-                .Distinct()
-                .Where(h => w.Map.Contains(h) && !w.Territory.ContainsKey(h));
-
-        public static string CanExpand(World w, Balance bal, Base b, Hex h)
+        /// <summary>
+        /// 거점 등급에 따라 영역을 다시 정한다: 거점마다 반경 안의 칸, 겹치면 더 가까운 거점, 같으면 먼저 세운 거점.
+        /// 영역은 시야·적 영역 격추 판정·전초기지 거리에 쓴다.
+        /// </summary>
+        public static void RefreshTerritory(World w, Balance bal)
         {
-            if (!w.Map.Contains(h)) return "맵 밖";
-            if (w.Territory.ContainsKey(h)) return "이미 영역";
-            if (!h.Neighbors().Any(n => w.Territory.TryGetValue(n, out var id) && id == b.Id)) return "영역에 붙어 있지 않음";
-            if (w.Funds < ExpandCost(w, bal, b)) return "자금 부족";
-            return null;
-        }
-
-        public static void Expand(World w, Balance bal, Base b, Hex h)
-        {
-            if (CanExpand(w, bal, b, h) != null) return;
-            w.Funds -= ExpandCost(w, bal, b);
-            w.Territory[h] = b.Id;
+            w.Territory.Clear();
+            foreach (var b in w.Bases.OrderBy(x => x.Id))
+            {
+                foreach (var h in Hex.Range(b.Hex, TerritoryRadius(bal, b)))
+                {
+                    if (!w.Map.Contains(h)) continue;
+                    if (w.BaseAt(h) is { } other && other.Id != b.Id) continue;
+                    if (w.Territory.TryGetValue(h, out var id))
+                    {
+                        var cur = w.BaseById(id);
+                        if (cur.Hex == h || Hex.Distance(cur.Hex, h) <= Hex.Distance(b.Hex, h)) continue;
+                    }
+                    w.Territory[h] = b.Id;
+                }
+            }
         }
 
         // ---- 시설 ----
 
-        /// <summary>칸 자체가 시설을 받을 수 있는지 (종류와 무관한 조건).</summary>
-        public static string CanBuildHere(World w, Hex h)
+        public static string CanBuild(World w, Balance bal, Base b, FacilityType type)
         {
-            var b = w.BaseOf(h);
-            if (b == null || b.Owner != World.Player) return "아군 영역이 아님";
-            if (b.Hex == h) return "거점 본부 칸";
-            if (w.Facilities.ContainsKey(h)) return "이미 시설 있음";
-            if (w.Map[h].Terrain == TerrainType.Sea) return "해상";
-            return null;
-        }
-
-        public static string CanBuild(World w, Balance bal, Hex h, FacilityType type)
-        {
-            var here = CanBuildHere(w, h);
-            if (here != null) return here;
-            var b = w.BaseOf(h);
+            if (b == null || b.Owner != World.Player) return "아군 거점이 아님";
             var def = bal.Def(type);
+            if (Has(w, b, type)) return def.Graded ? "이미 있음 (등급을 올리세요)" : "이미 있음";
             if (b.Grade < def.UnlockGrade) return $"거점 {def.UnlockGrade}등급 필요";
-            if (bal.HardFacilityCap && FacilityCount(w, b) >= FacilityCap(bal, b)) return "시설 상한";
-            var cell = w.Map[h];
-            if (def.Site == SiteRequirement.Oil && !cell.Oil) return "유전 칸 필요";
-            if (def.Site == SiteRequirement.Mountain && cell.Terrain != TerrainType.Mountain) return "산악 칸 필요";
+            if (bal.HardFacilityCap && FacilityPoints(b) >= FacilityCap(bal, b)) return "시설 상한";
             if (w.Funds < BuildCost(w, bal, b, type)) return "자금 부족";
             return null;
         }
 
-        /// <summary>이 거점에 다음으로 지을 시설이 상한을 몇 번째로 넘는지 (0이면 상한 안).</summary>
-        public static int NextOverCap(World w, Balance bal, Base b) => Math.Max(0, FacilityCount(w, b) + 1 - FacilityCap(bal, b));
+        /// <summary>이 거점에 시설 규모 1을 더하면 상한을 몇 번째로 넘는지 (0이면 상한 안).</summary>
+        public static int NextOverCap(World w, Balance bal, Base b) => Math.Max(0, FacilityPoints(b) + 1 - FacilityCap(bal, b));
+
+        static float OverCapFactor(World w, Balance bal, Base b) => 1f + bal.FacilityOverCapCostRatio * NextOverCap(w, bal, b);
 
         /// <summary>건설비 = 기본 × (1 + 할증 비율 × 상한 초과 순번). 상한 안이면 기본 그대로.</summary>
         public static int BuildCost(World w, Balance bal, Base b, FacilityType type) =>
-            (int)Math.Round(bal.Def(type).Cost * (1f + bal.FacilityOverCapCostRatio * NextOverCap(w, bal, b)));
+            (int)Math.Round(bal.Def(type).Cost * OverCapFactor(w, bal, b));
 
-        public static void Build(World w, Balance bal, Hex h, FacilityType type)
+        public static void Build(World w, Balance bal, Base b, FacilityType type)
         {
-            if (CanBuild(w, bal, h, type) != null) return;
-            w.Funds -= BuildCost(w, bal, w.BaseOf(h), type);
-            w.Facilities[h] = new Facility { Type = type };
+            if (CanBuild(w, bal, b, type) != null) return;
+            w.Funds -= BuildCost(w, bal, b, type);
+            b.Facilities.Add(new Facility { Type = type });
         }
 
-        public static int FacilityUpgradeCost(Balance bal, Facility f) =>
-            (int)(bal.Def(f.Type).Cost * (f.Grade + 1) * bal.FacilityUpgradeFactor);
+        /// <summary>등급 상승 비용 = 건설비 × 다음 등급 × 계수, 상한을 넘으면 건설과 같은 할증.</summary>
+        public static int FacilityUpgradeCost(World w, Balance bal, Base b, Facility f) =>
+            (int)Math.Round(bal.Def(f.Type).Cost * (f.Grade + 1) * bal.FacilityUpgradeFactor * OverCapFactor(w, bal, b));
 
-        public static string CanUpgradeFacility(World w, Balance bal, Hex h)
+        public static string CanUpgradeFacility(World w, Balance bal, Base b, FacilityType type)
         {
-            if (!w.Facilities.TryGetValue(h, out var f)) return "시설 없음";
-            if (!bal.Def(f.Type).Graded) return "등급 없는 시설";
-            if (f.Grade >= bal.MaxFacilityGrade) return "최고 등급";
-            if (w.Funds < FacilityUpgradeCost(bal, f)) return "자금 부족";
+            var f = Get(b, type);
+            if (f == null) return "시설 없음";
+            var def = bal.Def(type);
+            if (!def.Graded) return "등급 없는 시설";
+            if (f.Grade >= def.MaxGrade) return "최고 등급";
+            if (bal.HardFacilityCap && FacilityPoints(b) >= FacilityCap(bal, b)) return "시설 상한";
+            if (w.Funds < FacilityUpgradeCost(w, bal, b, f)) return "자금 부족";
             return null;
         }
 
-        public static void UpgradeFacility(World w, Balance bal, Hex h)
+        public static void UpgradeFacility(World w, Balance bal, Base b, FacilityType type)
         {
-            if (CanUpgradeFacility(w, bal, h) != null) return;
-            var f = w.Facilities[h];
-            w.Funds -= FacilityUpgradeCost(bal, f);
+            if (CanUpgradeFacility(w, bal, b, type) != null) return;
+            var f = Get(b, type);
+            w.Funds -= FacilityUpgradeCost(w, bal, b, f);
             f.Grade++;
         }
 
         /// <summary>철거 (환불 없음).</summary>
-        public static void Demolish(World w, Hex h) => w.Facilities.Remove(h);
+        public static void Demolish(World w, Base b, FacilityType type) => b.Facilities.RemoveAll(f => f.Type == type);
+
+        /// <summary>거점을 잃거나 빼앗았을 때: 시설 규모가 상한 안으로 들어올 때까지 나중에 지은 시설부터 등급을 깎고 없앤다. 깎인 규모를 돌려준다.</summary>
+        public static int TrimToCap(Balance bal, Base b)
+        {
+            var cap = FacilityCap(bal, b);
+            var cut = 0;
+            for (var i = b.Facilities.Count - 1; i >= 0 && FacilityPoints(b) > cap; i--)
+            {
+                var f = b.Facilities[i];
+                while (f.Grade > 1 && FacilityPoints(b) > cap)
+                {
+                    f.Grade--;
+                    cut++;
+                }
+                if (FacilityPoints(b) > cap)
+                {
+                    b.Facilities.RemoveAt(i);
+                    cut++;
+                }
+            }
+            return cut;
+        }
 
         // ---- 거점 등급 ----
 
@@ -175,6 +163,8 @@ namespace Prototype.Strategy.Rules
             if (CanUpgradeBase(w, bal, b) != null) return;
             w.Funds -= bal.BaseUpgradeCost[b.Grade + 1];
             b.Grade++;
+            RefreshTerritory(w, bal);
+            w.Log("거점 등급", $"{b.Name} → {b.Grade}등급");
         }
 
         // ---- 전초기지 (기획서 5.5) ----
@@ -189,7 +179,7 @@ namespace Prototype.Strategy.Rules
 
         /// <summary>
         /// 전초기지 건설 조건: 적 영역이 아니고, 가장 가까운 아군 거점에서 OutpostMinDistance 이상,
-        /// 어떤 편대든 공중급유를 포함해 닿을 수 있는 칸. (기획서 5.5 "영역 가장자리" 규칙을 플레이테스트 후 개정)
+        /// 어떤 편대든 공중급유를 포함해 닿을 수 있는 칸. 자원 타일 칸은 안 됨.
         /// </summary>
         public static string CanBuildOutpost(World w, Balance bal, Hex h)
         {
@@ -198,7 +188,7 @@ namespace Prototype.Strategy.Rules
             var owner = w.BaseOf(h);
             if (owner != null && owner.Owner != World.Player) return "적 영역";
             if (w.BaseAt(h) != null) return "거점 본부 칸";
-            if (w.Facilities.ContainsKey(h)) return "시설이 있는 칸";
+            if (w.SiteAt(h) != null) return "자원 타일";
             if (w.EnemyUnitAt(h) != null) return "적 부대가 있는 칸";
             var d = NearestOwnBaseDistance(w, h);
             if (d < bal.OutpostMinDistance) return $"아군 거점에서 {bal.OutpostMinDistance}칸 이상 떨어져야 함 (현재 {d})";
@@ -211,7 +201,7 @@ namespace Prototype.Strategy.Rules
         public static IEnumerable<Hex> OutpostCandidates(World w, Balance bal) =>
             w.Map.AllHexes().Where(h => CanBuildOutpost(w, bal, h) == null);
 
-        /// <summary>새 등급 1 거점의 본부로 삼는다. 아군 영역 안이면 그 칸을 떼어 온다.</summary>
+        /// <summary>새 등급 1 거점의 본부로 삼는다. 영역은 자동으로 다시 정한다.</summary>
         public static Base BuildOutpost(World w, Balance bal, Hex h)
         {
             if (CanBuildOutpost(w, bal, h) != null) return null;
@@ -226,12 +216,10 @@ namespace Prototype.Strategy.Rules
                 Owner = World.Player,
             };
             w.Bases.Add(b);
-            w.Territory[h] = b.Id;
+            RefreshTerritory(w, bal);
             HqRules.AddTrust(w, bal, bal.TrustOutpost, $"{b.Name} 건설");
             w.Log("전초기지", $"{b.Name} {h.ToOffset()} · 비용 {cost}");
             return b;
         }
-
-        static bool OwnedByPlayer(World w, Hex h) => w.BaseOf(h)?.Owner == World.Player;
     }
 }

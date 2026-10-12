@@ -212,11 +212,12 @@ namespace Prototype.Strategy
             _mapLabel.fontSize = Mathf.RoundToInt(15 * scale);
             _mapLabelSmall.fontSize = Mathf.RoundToInt(12 * scale);
 
-            foreach (var (h, f) in w.Facilities)
+            // 자원 타일: 종류·등급과 이름
+            foreach (var s in w.Sites)
             {
-                var def = _boot.Balance.Def(f.Type);
-                var text = def.Graded ? $"{def.Short}{f.Grade}" : def.Short;
-                MapLabel(HexLayout.ToWorld(h) + new Vector2(0f, 0.4f), text, _mapLabel, Color.white);
+                var c = HexLayout.ToWorld(s.Hex);
+                MapLabel(c, s.Grade == 0 ? "폐허" : $"{SiteRules.TypeName(s.Type)}{s.Grade}", _mapLabelSmall, Color.white);
+                MapLabel(c + new Vector2(0f, 0.6f), s.Name, _mapLabelSmall, s.Owner == World.Player ? new Color(0.6f, 0.85f, 1f) : s.Owner == ResourceSite.Neutral ? new Color(0.9f, 0.9f, 0.9f) : new Color(1f, 0.75f, 0.7f));
             }
 
             foreach (var b in w.Bases)
@@ -229,6 +230,9 @@ namespace Prototype.Strategy
                 var garrison = (squadrons > 0 ? $"편대 {squadrons}" : "") + (squadrons > 0 && ground > 0 ? " · " : "") + (ground > 0 ? $"지상 {ground}" : "");
                 if (garrison != "") MapLabel(c + new Vector2(0f, -0.62f), garrison, _mapLabelSmall, new Color(0.7f, 0.9f, 1f));
                 if (b.Id == w.GoalBaseId && b.Owner != World.Player) MapLabel(c + new Vector2(0f, 1.05f), "★ 장기 목표", _mapLabelSmall, new Color(1f, 0.9f, 0.4f));
+                // 아군 거점의 시설 요약 (예: 활2 격1 정1)
+                if (b.Owner == World.Player && b.Facilities.Count > 0)
+                    MapLabel(c + new Vector2(0f, 1.05f), string.Join(" ", b.Facilities.Select(f => { var d = _boot.Balance.Def(f.Type); return d.Graded ? $"{d.Short}{f.Grade}" : d.Short; })), _mapLabelSmall, new Color(0.85f, 0.95f, 1f));
             }
 
             foreach (var u in w.EnemyUnits)
@@ -300,13 +304,6 @@ namespace Prototype.Strategy
                 foreach (var h in _boot.OutpostCandidates)
                     MapLabel(HexLayout.ToWorld(h), BaseRules.OutpostCost(w, _boot.Balance, h).ToString(), _mapLabelSmall, Color.white);
 
-            var eb = _boot.ExpandBase;
-            if (eb != null && _boot.ExpandCandidates.Count > 0)
-            {
-                var cost = BaseRules.ExpandCost(w, _boot.Balance, eb);
-                var color = w.Funds >= cost ? Color.white : new Color(1f, 0.5f, 0.45f);
-                foreach (var h in _boot.ExpandCandidates) MapLabel(HexLayout.ToWorld(h), cost.ToString(), _mapLabelSmall, color);
-            }
         }
 
         void MapLabel(Vector2 world, string text, GUIStyle style, Color color)
@@ -366,8 +363,10 @@ namespace Prototype.Strategy
                     }
                     if (_boot.SelectedEnemy != null)
                         DrawEnemyInfo(_boot.SelectedEnemy, _boot.SelectedEnemyPrediction);
+                    else if (_boot.Selected is { } ss && w.SiteAt(ss) is { } site)
+                        DrawSitePanel(site);
                     else if (_boot.Selected is { } sel && w.BaseOf(sel) is { Owner: World.Player } b)
-                        DrawBasePanel(b, sel);
+                        DrawBasePanel(b);
                     else
                         DrawBaseSummary();
                     break;
@@ -387,40 +386,31 @@ namespace Prototype.Strategy
             foreach (var b in w.Bases.Where(x => x.Owner == World.Player))
             {
                 var target = b.Hex;
-                PanelButton($"{b.Name}  ·  {b.Grade}등급  ·  시설 {BaseRules.FacilityCount(w, b)}/{BaseRules.FacilityCap(_boot.Balance, b)}",
+                PanelButton($"{b.Name}  ·  {b.Grade}등급  ·  시설 규모 {BaseRules.FacilityPoints(b)}/{BaseRules.FacilityCap(_boot.Balance, b)}",
                     () => _boot.Selected = target);
+            }
+            GUILayout.Space(6);
+            GUILayout.Label("자원 타일", ProtoGui.Bold);
+            foreach (var s in w.Sites.OrderByDescending(x => x.Owner == World.Player).ThenBy(x => x.Id))
+            {
+                var hex = s.Hex;
+                PanelButton($"{s.Name}  ·  {SiteRules.TypeName(s.Type)} {s.Grade}등급  ·  {SiteRules.OwnerName(w, s.Owner)}{(s.Owner == World.Player ? $"  +{SiteRules.Income(_boot.Balance, s)}" : "")}",
+                    () => _boot.Selected = hex, style: GUI.skin.label);
             }
             GUILayout.Space(6);
             DrawOutpostButton();
         }
 
-        void DrawBasePanel(Base b, Hex sel)
+        void DrawBasePanel(Base b)
         {
             var w = _boot.World;
             var bal = _boot.Balance;
             GUILayout.Space(8);
             GUILayout.Label($"{b.Name}  ·  {b.Grade}등급 {GradeName(b.Grade)}", ProtoGui.Bold);
-            var hexes = w.TerritoryOf(b).Count();
-            var count = BaseRules.FacilityCount(w, b);
+            var points = BaseRules.FacilityPoints(b);
             var cap = BaseRules.FacilityCap(bal, b);
-            GUILayout.Label($"시설 {count}/{cap}{(count > cap ? $" (상한 초과 {count - cap})" : "")}   영역 {hexes}칸   유지비 −{hexes * bal.UpkeepPerHex}", count > cap ? _red : ProtoGui.Small);
-            var runway = BaseRules.RunwayLength(w, b);
-            GUILayout.Label($"활주로 직선 {runway}칸 → {BaseRules.SizeName(BaseRules.MaxAircraftSize(bal, runway))} 기체까지", ProtoGui.Small);
-
-            // 영역 확장
-            GUILayout.Space(4);
-            if (_boot.ExpandBase == b)
-            {
-                GUILayout.Label("확장 모드: 흰 칸을 클릭 / 패드 South (오른쪽 클릭·Esc·East로 종료)", _wrap);
-                PanelButton("확장 끝내기", _boot.StopExpand);
-            }
-            else
-            {
-                var expandCost = BaseRules.ExpandCost(w, bal, b);
-                var canExpand = w.Funds >= expandCost && BaseRules.ExpandCandidates(w, b).Any();
-                PanelButton($"영역 확장  (다음 칸 {expandCost})", () => _boot.StartExpand(b), enabled: canExpand);
-                if (!canExpand) GUILayout.Label(w.Funds < expandCost ? "자금 부족" : "넓힐 칸 없음", _red);
-            }
+            GUILayout.Label($"시설 규모 {points}/{cap}{(points > cap ? $" (상한 초과 {points - cap})" : "")}   영역 반경 {BaseRules.TerritoryRadius(bal, b)}   유지비 −{b.Grade * bal.UpkeepPerBaseGrade}", points > cap ? _red : ProtoGui.Small);
+            GUILayout.Label($"활주로 {BaseRules.MaxAircraftSize(b)}등급 → {BaseRules.SizeName(BaseRules.MaxAircraftSize(b))} 기체까지   격납고 편대 {w.SquadronsAt(b).Count()}/{SquadronRules.HangarCapacity(w, bal, b)}", ProtoGui.Small);
 
             // 거점 등급 상승
             GUILayout.Space(4);
@@ -432,52 +422,66 @@ namespace Prototype.Strategy
             {
                 var next = b.Grade + 1;
                 var reqs = BaseRules.UpgradeRequirements(w, bal, b).Select(x => $"{(x.met ? "■" : "□")} {bal.Def(x.type).Name}");
-                GUILayout.Label($"→ {next}등급 {GradeName(next)}: {bal.BaseUpgradeCost[next]}   {string.Join("  ", reqs)}", _wrap);
+                GUILayout.Label($"→ {next}등급 {GradeName(next)}: {bal.BaseUpgradeCost[next]}   {string.Join("  ", reqs)}  (영역 반경 {bal.TerritoryRadiusByGrade[System.Math.Min(next, bal.TerritoryRadiusByGrade.Length - 1)]})", _wrap);
                 ActionButton("거점 등급 상승", BaseRules.CanUpgradeBase(w, bal, b), () => BaseRules.UpgradeBase(w, bal, b));
             }
 
-            // 선택한 칸
+            // 지은 시설: 등급 올리기·철거
             GUILayout.Space(10);
-            if (b.Hex == sel)
-            {
-                GUILayout.Label("본부 칸 (시설 불가)", ProtoGui.Bold);
-                DrawFacilityList(b);
-                return;
-            }
-
-            if (w.Facilities.TryGetValue(sel, out var f))
+            GUILayout.Label("시설 (시설 규모 = 등급 합)", ProtoGui.Bold);
+            if (b.Facilities.Count == 0) GUILayout.Label("시설 없음", ProtoGui.Small);
+            foreach (var f in b.Facilities.OrderBy(x => x.Type).ToList())
             {
                 var def = bal.Def(f.Type);
-                GUILayout.Label(def.Graded ? $"{def.Name}  {f.Grade}등급" : def.Name, ProtoGui.Bold);
-                GUILayout.Label(def.Effect, _wrap);
+                var type = f.Type;
+                GUILayout.Label(def.Graded ? $"{def.Name}  {f.Grade}/{def.MaxGrade}등급 — {def.Effect}" : $"{def.Name} — {def.Effect}", _wrap);
+                GUILayout.BeginHorizontal();
+                var reason = def.Graded ? BaseRules.CanUpgradeFacility(w, bal, b, type) : null;
                 if (def.Graded)
-                    ActionButton($"시설 등급 상승  ({BaseRules.FacilityUpgradeCost(bal, f)})",
-                        BaseRules.CanUpgradeFacility(w, bal, sel), () => BaseRules.UpgradeFacility(w, bal, sel));
-                PanelButton("철거 (환불 없음)", () => BaseRules.Demolish(w, sel));
-                return;
+                    PanelButton(f.Grade >= def.MaxGrade ? "최고 등급" : $"등급 올리기 {BaseRules.FacilityUpgradeCost(w, bal, b, f)}",
+                        () => BaseRules.UpgradeFacility(w, bal, b, type), enabled: reason == null);
+                PanelButton("철거 (환불 없음)", () => BaseRules.Demolish(w, b, type));
+                GUILayout.EndHorizontal();
+                if (reason != null && reason != "최고 등급") GUILayout.Label(reason, _red);
             }
 
-            GUILayout.Label("빈 칸 — 시설 건설", ProtoGui.Bold);
-            var here = BaseRules.CanBuildHere(w, sel);
-            if (here != null)
+            // 새로 지을 시설
+            GUILayout.Space(10);
+            GUILayout.Label("시설 건설", ProtoGui.Bold);
+            var over = BaseRules.NextOverCap(w, bal, b);
+            if (over > 0 && !bal.HardFacilityCap)
+                GUILayout.Label($"상한 초과 {over}번째 — 건설·등급 상승 비용 +{bal.FacilityOverCapCostRatio * over:P0}. 거점을 빼앗기면 상한을 넘는 시설부터 깎임", _red);
+            foreach (var def in bal.Facilities.Values.Where(d => !BaseRules.Has(w, b, d.Type)))
             {
-                GUILayout.Label(here, _wrap);
-            }
-            else
-            {
-                var over = BaseRules.NextOverCap(w, bal, b);
-                if (over > 0 && !bal.HardFacilityCap)
-                    GUILayout.Label($"상한 초과 {over}번째 — 건설비 +{bal.FacilityOverCapCostRatio * over:P0}. 거점을 빼앗기면 상한을 넘는 시설부터 파괴됨", _red);
-                foreach (var def in bal.Facilities.Values)
-                {
-                    var cost = BaseRules.BuildCost(w, bal, b, def.Type);
-                    ActionButton(cost != def.Cost ? $"{def.Name}  {cost} (기본 {def.Cost})" : $"{def.Name}  {cost}",
-                        BaseRules.CanBuild(w, bal, sel, def.Type), () => BaseRules.Build(w, bal, sel, def.Type), def.Effect);
-                }
+                var cost = BaseRules.BuildCost(w, bal, b, def.Type);
+                var type = def.Type;
+                ActionButton(cost != def.Cost ? $"{def.Name}  {cost} (기본 {def.Cost})" : $"{def.Name}  {cost}",
+                    BaseRules.CanBuild(w, bal, b, type), () => BaseRules.Build(w, bal, b, type), def.Effect);
             }
 
             GUILayout.Space(6);
             DrawOutpostButton();
+        }
+
+        /// <summary>자원 타일 칸을 골랐을 때.</summary>
+        void DrawSitePanel(ResourceSite site)
+        {
+            var w = _boot.World;
+            var bal = _boot.Balance;
+            GUILayout.Space(8);
+            GUILayout.Label($"{site.Name}  ·  {SiteRules.TypeName(site.Type)} {site.Grade}등급{(site.Grade == 0 ? " (폐허)" : "")}", ProtoGui.Bold);
+            GUILayout.Label($"소유 {SiteRules.OwnerName(w, site.Owner)}  ·  수입 {SiteRules.Income(bal, site)}/턴 (등급당 {SiteRules.IncomePerGrade(bal, site.Type)})", ProtoGui.Small);
+            if (site.Owner == World.Player)
+            {
+                ActionButton(site.Grade == 0 ? $"복구 ({SiteRules.UpgradeCost(bal, site)})" : $"등급 올리기 ({SiteRules.UpgradeCost(bal, site)})",
+                    SiteRules.CanUpgrade(w, bal, site), () => SiteRules.Upgrade(w, bal, site));
+                GUILayout.Label("적 부대가 이 칸에 들어오면 빼앗깁니다 (수비대 없음)", _wrap);
+            }
+            else
+            {
+                GUILayout.Label("지상군이 이 칸에 들어가면 점령 (수비대 없음). 지상군 탭 [출동…] → 이 칸 클릭", _wrap);
+                if (site.Owner > 0) GUILayout.Label($"적 소유: 폭격으로 시설(등급 × {bal.SiteStructurePerGrade})을 다 깨면 등급 −1, 0이면 중립 폐허. 적은 가진 타일 수만큼 보충이 빨라집니다", _wrap);
+            }
         }
 
         /// <summary>전초기지 건설 모드 버튼 (거점 패널·거점 요약 공용).</summary>
@@ -505,19 +509,6 @@ namespace Prototype.Strategy
                 PanelButton($"전초기지 건설…  ({bal.OutpostCost} + 거리 × {bal.OutpostCostPerDistance})", _boot.StartOutpost, enabled: any);
                 if (!any) GUILayout.Label("지을 수 있는 칸 없음 (자금·거리·도달 범위 확인)", _red);
             }
-        }
-
-        /// <summary>본부 칸을 골랐을 때: 이 거점의 시설 목록.</summary>
-        void DrawFacilityList(Base b)
-        {
-            var bal = _boot.Balance;
-            foreach (var (h, f) in _boot.World.FacilitiesOf(b).OrderBy(x => x.facility.Type).ToList())
-            {
-                var def = bal.Def(f.Type);
-                var target = h;
-                PanelButton(def.Graded ? $"{def.Name} {f.Grade}등급" : def.Name, () => _boot.Selected = target, style: GUI.skin.label);
-            }
-            GUILayout.Label("시설을 지으려면 영역 안의 빈 칸을 고르세요", _wrap);
         }
 
         /// <summary>불가 사유가 있으면 비활성 버튼 + 사유를 표시.</summary>
@@ -1046,7 +1037,8 @@ namespace Prototype.Strategy
             "맵 이동: WASD · 방향키 · 가운데 드래그 / 오른쪽 스틱",
             "확대·축소: 휠 / RT · LT    패드 커서: 왼쪽 스틱",
             "턴 종료: Enter / Start    다시 시작: R",
-            "아군 영역 칸을 고르면 거점 패널: 확장·등급·시설 건설",
+            "거점 칸을 고르면 거점 패널: 거점 등급·시설 건설·시설 등급 (시설은 거점 안 목록, 영역은 등급에 따라 자동)",
+            "자원 타일(정유·광산·도시): 지상군이 들어가면 점령, 소유하면 수입. 적 소유는 폭격으로 등급 −1",
             "패드 패널 조작: 방향키 위·아래로 초점, South 실행, East 해제",
             "탭 전환: Q / E · LB / RB    (거점 · 격납고 · 출격 · 지상군 · 상점 · 명부)",
             "출격 탭: 편대 선택 → 맵에서 목표 클릭 → 출격 실행 → 디브리핑",

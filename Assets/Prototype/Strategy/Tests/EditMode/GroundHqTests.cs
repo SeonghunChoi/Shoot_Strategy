@@ -25,7 +25,7 @@ namespace Prototype.Strategy.Tests
 
         GroundUnit HireAtCoast()
         {
-            BaseRules.Build(_w, _bal, Off(2, 4), FacilityType.Barracks);
+            BaseRules.Build(_w, _bal, _w.Bases[0], FacilityType.Barracks);
             return GroundRules.Hire(_w, _bal, _coast);
         }
 
@@ -173,9 +173,8 @@ namespace Prototype.Strategy.Tests
             {
                 case DirectiveType.DestroyUnit: _w.EnemyUnits.RemoveAll(u => u.Id == d.TargetUnitId); break;
                 case DirectiveType.HoldBase: _w.Turn = d.Deadline; break;
-                case DirectiveType.Expand:
-                    foreach (var h in BaseRules.ExpandCandidates(_w, _coast).Take(d.ExpandBy).ToList()) BaseRules.Expand(_w, _bal, _coast, h);
-                    break;
+                case DirectiveType.UpgradeBase: _w.Bases[1].Grade++; break;
+                case DirectiveType.SecureSite: SiteRules.Capture(_w, _w.Sites.First(s => s.Owner != World.Player), World.Player, "시험"); break;
             }
             HqRules.EndTurn(_w, _bal);
             Assert.AreEqual(trust + _bal.TrustDirectiveSuccess, _w.Trust);

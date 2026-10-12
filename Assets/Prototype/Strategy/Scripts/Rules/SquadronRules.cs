@@ -35,21 +35,18 @@ namespace Prototype.Strategy.Rules
 
         // ---- 거점 운용 조건 ----
 
-        public static int HangarCapacity(World w, Balance bal, Base b) =>
-            w.FacilitiesOf(b).Count(f => f.facility.Type == FacilityType.Hangar) * bal.SquadronsPerHangar;
+        public static int HangarCapacity(World w, Balance bal, Base b) => BaseRules.GradeOf(b, FacilityType.Hangar) * bal.SquadronsPerHangar;
 
-        public static int MaintenanceGrade(World w, Base b) =>
-            w.FacilitiesOf(b).Where(f => f.facility.Type == FacilityType.Maintenance).Select(f => f.facility.Grade).DefaultIfEmpty(0).Max();
+        public static int MaintenanceGrade(World w, Base b) => BaseRules.GradeOf(b, FacilityType.Maintenance);
 
-        public static int EntertainmentGrade(World w, Base b) =>
-            w.FacilitiesOf(b).Where(f => f.facility.Type == FacilityType.Entertainment).Select(f => f.facility.Grade).DefaultIfEmpty(0).Max();
+        public static int EntertainmentGrade(World w, Base b) => BaseRules.GradeOf(b, FacilityType.Entertainment);
 
-        /// <summary>거점이 이 기종을 운용할 수 있는지 (활주로 길이 ≥ 크기, 정비소 등급 ≥ 티어; 정비소 없으면 티어 1만).</summary>
+        /// <summary>거점이 이 기종을 운용할 수 있는지 (활주로 등급 ≥ 크기, 정비소 등급 ≥ 티어; 정비소 없으면 티어 1만).</summary>
         public static string CanOperate(World w, Balance bal, Base b, AircraftType type)
         {
             var def = bal.Def(type);
-            var runway = BaseRules.RunwayLength(w, b);
-            if (BaseRules.MaxAircraftSize(bal, runway) < def.Size) return $"활주로 {bal.RunwayForSize[def.Size]}칸 필요 (현재 {runway})";
+            var runway = BaseRules.MaxAircraftSize(b);
+            if (runway < def.Size) return $"활주로 {def.Size}등급 필요 (현재 {runway})";
             var maint = Math.Max(1, MaintenanceGrade(w, b));
             if (maint < def.Tier) return $"정비소 {def.Tier}등급 필요";
             return null;

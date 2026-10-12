@@ -38,22 +38,9 @@ namespace Prototype.Strategy.Rules
 
         static void BuildIncome(World w, Balance bal)
         {
-            foreach (var b in w.Bases.Where(x => x.Owner == World.Player).ToList())
-            {
-                // 영역 안의 유전·산악 칸에 수입 시설
-                foreach (var h in w.TerritoryOf(b).ToList())
-                {
-                    var cell = w.Map[h];
-                    if (cell.Oil && w.Funds >= bal.Def(FacilityType.Refinery).Cost + 200) BaseRules.Build(w, bal, h, FacilityType.Refinery);
-                    else if (cell.Terrain == TerrainType.Mountain && w.Funds >= bal.Def(FacilityType.Mine).Cost + 200) BaseRules.Build(w, bal, h, FacilityType.Mine);
-                }
-                // 영역에 유전이 없으면 붙은 유전 칸으로 확장
-                if (!w.TerritoryOf(b).Any(h => w.Map[h].Oil))
-                {
-                    var oil = BaseRules.ExpandCandidates(w, b).FirstOrDefault(h => w.Map[h].Oil);
-                    if (w.Map.Contains(oil) && w.Map[oil].Oil && w.Funds >= BaseRules.ExpandCost(w, bal, b) + 400) BaseRules.Expand(w, bal, b, oil);
-                }
-            }
+            // 도시판: 가진 자원 타일 등급을 올린다 (여유 자금이 있을 때)
+            foreach (var s in SiteRules.OwnedBy(w, World.Player).OrderBy(x => x.Grade).ToList())
+                if (w.Funds >= SiteRules.UpgradeCost(bal, s) + 400) SiteRules.Upgrade(w, bal, s);
         }
 
         static void BuildBarracksAndGround(World w, Balance bal)
@@ -63,22 +50,25 @@ namespace Prototype.Strategy.Rules
             var barracks = bases.FirstOrDefault(b => GroundRules.BarracksGrade(w, b) > 0);
             if (barracks == null && w.Funds >= bal.Def(FacilityType.Barracks).Cost + 300)
             {
-                foreach (var b in bases)
-                {
-                    var spot = w.TerritoryOf(b).FirstOrDefault(h => BaseRules.CanBuild(w, bal, h, FacilityType.Barracks) == null);
-                    if (BaseRules.CanBuild(w, bal, spot, FacilityType.Barracks) != null) continue;
-                    BaseRules.Build(w, bal, spot, FacilityType.Barracks);
-                    barracks = b;
-                    break;
-                }
+                barracks = bases.FirstOrDefault(b => BaseRules.CanBuild(w, bal, b, FacilityType.Barracks) == null);
+                if (barracks != null) BaseRules.Build(w, bal, barracks, FacilityType.Barracks);
             }
             if (barracks != null && w.GroundUnits.Count == 0 && w.Funds >= bal.GroundHireCost + bal.GroundDeployCost + 300)
                 GroundRules.Hire(w, bal, barracks);
 
             var goal = w.Bases.FirstOrDefault(b => b.Id == w.GoalBaseId && b.Owner != World.Player);
-            foreach (var g in w.GroundUnits.Where(x => !x.Deployed).ToList())
+            foreach (var g in w.GroundUnits.Where(x => !x.Deployed || x.Target == null).ToList())
+            {
                 if (goal != null && g.Strength > (goal.AntiAir + goal.Structures) / 2 && GroundRules.CanDeploy(w, bal, g, goal.Hex) == null)
+                {
                     GroundRules.Deploy(w, bal, g, goal.Hex);
+                    continue;
+                }
+                // 아니면 가장 가까운 남의 자원 타일을 점령하러
+                var site = w.Sites.Where(x => x.Owner != World.Player && GroundRules.CanDeploy(w, bal, g, x.Hex) == null)
+                    .OrderBy(x => Hex.Distance(x.Hex, g.Hex)).FirstOrDefault();
+                if (site != null) GroundRules.Deploy(w, bal, g, site.Hex);
+            }
         }
 
         static void Sorties(World w, Balance bal)

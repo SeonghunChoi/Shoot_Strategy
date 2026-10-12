@@ -11,34 +11,15 @@ namespace Prototype.Strategy.Rules
         {
             var lines = new List<BudgetLine> { new() { Label = $"상부 예산 (신뢰도 {w.Trust})", Amount = HqRules.Budget(w, bal) } };
 
-            var refinery = 0;
-            var mine = 0;
-            var financeFlat = 0;
-            var finance = 0;
-            foreach (var (hex, f) in w.Facilities)
-            {
-                if (w.BaseOf(hex)?.Owner != World.Player) continue;
-                var def = bal.Def(f.Type);
-                switch (f.Type)
-                {
-                    case FacilityType.Refinery: refinery += def.IncomePerGrade * f.Grade; break;
-                    case FacilityType.Mine: mine += def.IncomePerGrade * f.Grade; break;
-                    case FacilityType.Finance:
-                        financeFlat += bal.FinanceFlatPerGrade * f.Grade;
-                        if (w.Funds > 0) finance += (int)(w.Funds * bal.FinanceRatePerGrade * f.Grade);
-                        break;
-                }
-            }
-            if (refinery > 0) lines.Add(new BudgetLine { Label = "정유시설", Amount = refinery });
-            if (mine > 0) lines.Add(new BudgetLine { Label = "광산", Amount = mine });
-            if (financeFlat > 0) lines.Add(new BudgetLine { Label = "금융 수입", Amount = financeFlat });
-            if (finance > 0) lines.Add(new BudgetLine { Label = "금융 이자", Amount = finance });
+            // 자원 타일 수입 (종류별)
+            foreach (var g in SiteRules.OwnedBy(w, World.Player).Where(x => x.Grade > 0).GroupBy(x => x.Type).OrderBy(g => g.Key))
+                lines.Add(new BudgetLine { Label = $"{SiteRules.TypeName(g.Key)} ({g.Count()}곳)", Amount = g.Sum(x => SiteRules.Income(bal, x)) });
 
             var refund = SquadronRules.EntertainmentRefund(w, bal);
             if (refund > 0) lines.Add(new BudgetLine { Label = "유흥가 급여 환수", Amount = refund });
 
-            var hexes = w.OwnedHexes(World.Player).Count();
-            lines.Add(new BudgetLine { Label = $"영역 유지비 ({hexes}칸)", Amount = -bal.UpkeepPerHex * hexes });
+            var grades = w.Bases.Where(b => b.Owner == World.Player).Sum(b => b.Grade);
+            lines.Add(new BudgetLine { Label = $"거점 유지비 (등급 합 {grades})", Amount = -bal.UpkeepPerBaseGrade * grades });
             lines.Add(new BudgetLine { Label = $"파일럿 급여 ({w.Pilots.Count}명)", Amount = -SquadronRules.Salaries(w, bal) });
             if (w.GroundUnits.Count > 0) lines.Add(new BudgetLine { Label = $"지상군 유지비 ({w.GroundUnits.Count}개)", Amount = -GroundRules.Upkeep(w, bal) });
             var (repaired, repairCost) = SquadronRules.RepairForecast(w, bal);
