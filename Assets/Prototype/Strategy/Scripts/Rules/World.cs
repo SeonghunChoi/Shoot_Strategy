@@ -87,6 +87,8 @@ namespace Prototype.Strategy.Rules
         public readonly List<Base> Bases = new();
         /// <summary>영역 칸 → 소속 거점 Id (거점 등급에 따라 자동, BaseRules.RefreshTerritory).</summary>
         public readonly Dictionary<Hex, int> Territory = new();
+        /// <summary>호출한 공중 급유기.</summary>
+        public readonly List<Tanker> Tankers = new();
         /// <summary>자원 타일 (정유·광산·도시).</summary>
         public readonly List<ResourceSite> Sites = new();
         public readonly List<TurnReport> Reports = new();

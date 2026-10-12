@@ -27,12 +27,6 @@ namespace Prototype.Strategy.Tests
             Assert.IsEmpty(SortieRules.Targets(_w, _bal, _s1));
             Assert.AreEqual((4, "동부군 A부대"), SortieRules.NearestTarget(_w, _s1));
             Assert.AreEqual("작전 반경 밖", SortieRules.CanPlan(_w, _bal, _s1, _unitA));
-            // 공중급유: 반경 3 × 2 = 6 → 닿음, 비용 두 배
-            _s1.Refuel = true;
-            Assert.AreEqual(6, SquadronRules.OperationRadius(_w, _bal, _s1));
-            CollectionAssert.Contains(SortieRules.Targets(_w, _bal, _s1).ToList(), _unitA);
-            Assert.AreEqual(120, SortieRules.Cost(_w, _bal, _s1));
-            _s1.Refuel = false;
             // 보급창고 +1 → 4
             _w.Funds = 100000;
             BaseRules.Build(_w, _bal, _w.Bases[0], FacilityType.Depot);
@@ -112,14 +106,6 @@ namespace Prototype.Strategy.Tests
             }
             // 교전하지 않은 기체도 기본 경험치는 받는다
             Assert.IsTrue(r.Aircraft.All(o => o.XpGain >= _bal.SortieBaseXp));
-        }
-
-        [Test]
-        public void Refuel_IsConsumedBySortie()
-        {
-            _s1.Refuel = true;
-            SortieRules.Resolve(_w, _bal, _s1, _unitA);
-            Assert.IsFalse(_s1.Refuel);
         }
 
         [Test]

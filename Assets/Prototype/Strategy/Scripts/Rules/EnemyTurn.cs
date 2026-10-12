@@ -61,12 +61,15 @@ namespace Prototype.Strategy.Rules
         public static void Run(World w, Balance bal)
         {
             w.Intercepts.Clear();
+            foreach (var u in w.EnemyUnits) u.PrevHex = u.Hex;
             foreach (var f in w.Factions)
             {
                 UpdateStance(w, bal, f);
                 foreach (var u in w.EnemyUnits.Where(x => x.Owner == f.Id).ToList())
                     ActUnit(w, bal, f, u);
             }
+            // 도착 대기 중인 급유기와 맞닿은 적(공중 전력)은 격추
+            foreach (var u in w.EnemyUnits.ToList()) TankerRules.ShootDownAdjacent(w, u);
             FactionCombat(w, bal);
             GroundCombat(w, bal);
             Reinforce(w, bal);
@@ -140,6 +143,7 @@ namespace Prototype.Strategy.Rules
                 }
                 if (Vision.IsVisible(w, bal, u.Hex)) w.EnemyEvents.Add($"{u.Name} 이동 → {u.Hex.ToOffset()}");
             }
+            TankerRules.ShootDownAdjacent(w, u);
 
             if (f.Stance == Stance.Offensive && w.BaseAt(g) is { Owner: World.Player } target && Hex.Distance(u.Hex, g) <= 1)
                 Attack(w, bal, f, u, target);
@@ -148,6 +152,8 @@ namespace Prototype.Strategy.Rules
         /// <summary>태세에 따른 이번 턴 목표 칸 (없으면 null).</summary>
         static Hex? ChooseGoal(World w, Balance bal, Faction f, EnemyUnit u, Stance stance)
         {
+            // 탐지한 급유기가 이번 턴에 닿으면 그쪽으로 (재정비 중이 아니면)
+            if (stance != Stance.Regroup && TankerRules.TargetFor(w, bal, f, u) is { } tanker) return tanker.Hex;
             var home = BasesOf(w, f).OrderBy(b => Hex.Distance(b.Hex, u.Hex)).FirstOrDefault();
             switch (stance)
             {
@@ -176,6 +182,7 @@ namespace Prototype.Strategy.Rules
             var s = w.Squadrons.FirstOrDefault(x => x.AirHex is { } ah && Hex.Distance(ah, u.Hex) <= 1 && FlightRules.Flyers(w, x).Count > 0);
             if (s == null) return false;
             var at = s.AirHex.Value;
+            FlightRules.Jettison(w, s); // 교전하면 드롭탱크를 버린다
             var rep = SortieRules.Resolve(w, bal, s, u.Hex, u);
             rep.Order = w.Debriefs.Count + 1;
             w.Debriefs.Add(rep);
@@ -241,7 +248,7 @@ namespace Prototype.Strategy.Rules
             if (p.EngageGround != null) return p;
             p.Goal = ChooseGoal(w, bal, f, u, p.Stance);
             if (p.Goal is not { } goal) return p;
-            p.GoalName = w.BaseAt(goal)?.Name ?? w.SiteAt(goal)?.Name ?? goal.ToOffset().ToString();
+            p.GoalName = w.BaseAt(goal)?.Name ?? w.SiteAt(goal)?.Name ?? (w.Tankers.Any(t => t.Hex == goal) ? "급유기" : goal.ToOffset().ToString());
             if (!(p.Stance == Stance.Offensive && Hex.Distance(u.Hex, goal) <= 1))
                 p.ThisTurn = StepsThisTurn(w, bal, f, u.Hex, goal, p.Stance, out p.Later);
             var end = p.ThisTurn.Count > 0 ? p.ThisTurn[^1] : u.Hex;

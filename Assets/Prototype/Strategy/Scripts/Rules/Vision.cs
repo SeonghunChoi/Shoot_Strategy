@@ -28,6 +28,49 @@ namespace Prototype.Strategy.Rules
             return bal.TerritoryVisionRange + radar * bal.RadarRangePerGrade;
         }
 
+        /// <summary>미확인 접촉 범위 = 시야 + 추가 칸 (레이더 등급만큼 시야와 함께 넓어진다).</summary>
+        public static int ContactRange(World w, Balance bal, Base b) => VisionRange(w, bal, b) + bal.ContactExtraRange;
+
+        /// <summary>레이더 미확인 접촉: 표시 위치와 지난 위치(이동 방향). 정체·전력·부대 수는 알 수 없다 (한 칸에 하나).</summary>
+        public sealed class Contact
+        {
+            public Hex Hex;
+            public Hex? From;
+        }
+
+        /// <summary>
+        /// 시야 밖이지만 아군 거점의 접촉 범위 안인 적 부대. 잡아낸 거점에 레이더가 있으면 정확한 위치,
+        /// 없으면 부대·턴마다 정해지는 최대 1칸 오차 (같은 턴 안에서는 흔들리지 않음, 시야 안 칸으로는 어긋나지 않음).
+        /// </summary>
+        public static List<Contact> Contacts(World w, Balance bal, HashSet<Hex> visible)
+        {
+            var result = new List<Contact>();
+            if (!bal.VisionEnabled) return result;
+            var bases = w.Bases.Where(b => b.Owner == World.Player).Select(b => (b, range: ContactRange(w, bal, b), radar: BaseRules.GradeOf(b, FacilityType.Radar), hexes: w.TerritoryOf(b).ToList())).ToList();
+            foreach (var u in w.EnemyUnits)
+            {
+                if (visible.Contains(u.Hex)) continue;
+                var radar = -1;
+                foreach (var x in bases)
+                    if (x.hexes.Any(h => Hex.Distance(h, u.Hex) <= x.range)) radar = System.Math.Max(radar, x.radar);
+                if (radar < 0) continue;
+                var shown = radar >= 1 ? u.Hex : Jitter(w, visible, u.Id, w.Turn, u.Hex);
+                if (result.Any(c => c.Hex == shown)) continue;
+                Hex? from = null;
+                if (u.PrevHex is { } p && p != u.Hex) from = radar >= 1 ? p : Jitter(w, visible, u.Id, w.Turn - 1, p);
+                result.Add(new Contact { Hex = shown, From = from });
+            }
+            return result;
+        }
+
+        static Hex Jitter(World w, HashSet<Hex> visible, int id, int turn, Hex h)
+        {
+            var k = (int)(((uint)id * 73856093u ^ (uint)turn * 19349663u) % 7u);
+            if (k == 0) return h;
+            var n = h.Neighbor(k - 1);
+            return w.Map.Contains(n) && !visible.Contains(n) ? n : h;
+        }
+
         /// <summary>플레이어가 지금 볼 수 있는 칸.</summary>
         public static HashSet<Hex> VisibleHexes(World w, Balance bal)
         {

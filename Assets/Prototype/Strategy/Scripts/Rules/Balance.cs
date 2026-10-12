@@ -107,12 +107,25 @@ namespace Prototype.Strategy.Rules
         /// <summary>기지 설비(보급창고)에 의한 작전 반경 증가.</summary>
         [Tune("작전 반경·급유·전초기지", "보급창고 반경 보너스", 0f, 3f)]
         public int DepotRadiusBonus = 1;
-        /// <summary>공중급유: (기체 반경 + 설비 보너스) × 이 값.</summary>
-        [Tune("작전 반경·급유·전초기지", "공중급유 반경 배율", 1f, 4f)]
-        public float RefuelRadiusMultiplier = 2f;
-        /// <summary>공중급유 비용 = 편대 출격 비용 × 이 값.</summary>
-        [Tune("작전 반경·급유·전초기지", "공중급유 비용 비율", 0f, 3f)]
-        public float RefuelCostRatio = 1f;
+        // ---- 공중 급유기·드롭탱크 (도시판 2단계) ----
+        [Tune("작전 반경·급유·전초기지", "급유기 호출 비용", 0f, 600f)]
+        public int TankerCost = 150;
+        /// <summary>급유기를 띄울 거점에서 호출 지점까지 최대 거리.</summary>
+        [Tune("작전 반경·급유·전초기지", "급유기 호출 범위", 1f, 12f)]
+        public int TankerRange = 6;
+        [Tune("작전 반경·급유·전초기지", "급유기 범위 + (보급창고)", 0f, 6f)]
+        public int TankerDepotBonus = 2;
+        /// <summary>이 등급 이상 활주로가 있는 거점마다 급유기 1대.</summary>
+        [Tune("작전 반경·급유·전초기지", "급유기 필요 활주로 등급", 1f, 3f)]
+        public int TankerMinRunway = 2;
+        [Tune("작전 반경·급유·전초기지", "급유 거리 (급유기 주변 칸)", 0f, 3f)]
+        public int TankerRefuelRange = 1;
+        /// <summary>드롭탱크: 연료 × (1 + 이 값), 반올림. 탱크 분량을 먼저 쓴다.</summary>
+        [Tune("비행", "드롭탱크 추가 연료 비율", 0f, 2f)]
+        public float DropTankRatio = 0.5f;
+        /// <summary>레이더 미확인 접촉: 시야 밖이라도 시야 + 이 칸 안의 적은 "?"로 보인다.</summary>
+        [Tune("적 세력·시야", "미확인 접촉 추가 범위", 0f, 6f)]
+        public int ContactExtraRange = 2;
         /// <summary>전초기지는 가장 가까운 아군 거점에서 이 거리 이상.</summary>
         [Tune("작전 반경·급유·전초기지", "전초기지 최소 거리", 1f, 6f)]
         public int OutpostMinDistance = 3;

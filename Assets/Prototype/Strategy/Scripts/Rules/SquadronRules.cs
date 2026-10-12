@@ -56,18 +56,21 @@ namespace Prototype.Strategy.Rules
         public static int FacilityRadiusBonus(World w, Balance bal, Base b) =>
             BaseRules.Has(w, b, FacilityType.Depot) ? bal.DepotRadiusBonus : 0;
 
-        /// <summary>편대 작전 반경 = (편대 안 기체 반경의 최솟값 + 설비 보너스), 공중급유면 × 배율. 기체가 없으면 0.</summary>
-        public static int OperationRadius(World w, Balance bal, Squadron s, bool? refuel = null)
+        /// <summary>편대 작전 반경 = 편대 안 기체 반경의 최솟값 + 설비 보너스. 기체가 없으면 0.</summary>
+        public static int OperationRadius(World w, Balance bal, Squadron s)
         {
             if (s.AircraftIds.Count == 0) return 0;
             var b = w.BaseById(s.BaseId);
-            var range = s.AircraftIds.Min(id => bal.Def(w.AircraftById(id).Type).Range) + FacilityRadiusBonus(w, bal, b);
-            return (refuel ?? s.Refuel) ? (int)(range * bal.RefuelRadiusMultiplier) : range;
+            return s.AircraftIds.Min(id => bal.Def(w.AircraftById(id).Type).Range) + FacilityRadiusBonus(w, bal, b);
         }
 
-        /// <summary>어떤 편대든 (공중급유 포함) 닿을 수 있는 칸인지 — 전초기지 건설 조건.</summary>
+        /// <summary>드롭탱크를 달면 왕복할 수 있는 거리 (전초기지 건설 조건의 "편대가 닿는 칸").</summary>
+        public static int ReachWithDropTank(World w, Balance bal, Squadron s) =>
+            (FlightRules.MaxFuel(w, bal, s) + FlightRules.TankCapacity(w, bal, s)) / 2;
+
+        /// <summary>어떤 편대든 (드롭탱크 포함) 왕복할 수 있는 칸인지 — 전초기지 건설 조건.</summary>
         public static bool ReachableByAir(World w, Balance bal, Hex h) =>
-            w.Squadrons.Any(s => Hex.Distance(w.BaseById(s.BaseId).Hex, h) <= OperationRadius(w, bal, s, refuel: true));
+            w.Squadrons.Any(s => Hex.Distance(w.BaseById(s.BaseId).Hex, h) <= ReachWithDropTank(w, bal, s));
 
         // ---- 편대 편성 ----
 

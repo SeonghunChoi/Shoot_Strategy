@@ -22,8 +22,39 @@ namespace Prototype.Strategy.Rules
             return speeds.Count == 0 ? 0 : speeds.Min();
         }
 
-        /// <summary>출격 시 연료 = 작전 반경 × 2 (왕복) + 예비. 공중급유를 켜면 반경이 늘어난 만큼.</summary>
+        /// <summary>기체 연료 = 작전 반경 × 2 (왕복) + 예비.</summary>
         public static int MaxFuel(World w, Balance bal, Squadron s) => SquadronRules.OperationRadius(w, bal, s) * 2 + bal.ReserveFuel;
+
+        /// <summary>드롭탱크 연료 = 기체 연료 × (1 + 비율)을 반올림한 값 − 기체 연료.</summary>
+        public static int TankCapacity(World w, Balance bal, Squadron s)
+        {
+            var max = MaxFuel(w, bal, s);
+            return (int)Math.Round(max * (1f + bal.DropTankRatio), MidpointRounding.AwayFromZero) - max;
+        }
+
+        /// <summary>남은 연료 합 (기체 + 드롭탱크).</summary>
+        public static int TotalFuel(Squadron s) => s.Fuel + s.TankFuel;
+
+        /// <summary>연료 소모: 드롭탱크 분량부터.</summary>
+        static void Burn(Squadron s, int amount)
+        {
+            var fromTank = Math.Min(s.TankFuel, amount);
+            s.TankFuel -= fromTank;
+            s.Fuel -= amount - fromTank;
+        }
+
+        /// <summary>드롭탱크 투하 (교전·공격 목표 도착). 남은 탱크 연료도 사라진다.</summary>
+        public static void Jettison(World w, Squadron s)
+        {
+            if (!s.TankAttached) return;
+            var left = s.TankFuel;
+            s.TankAttached = false;
+            s.TankFuel = 0;
+            w.Log("드롭탱크", $"{s.Name} 투하 (남은 탱크 연료 {left})");
+        }
+
+        /// <summary>아군 영역 상공인지 (초계: 여기서 턴을 마치면 연료를 쓰지 않는다).</summary>
+        public static bool OverOwnTerritory(World w, Squadron s) => s.AirHex is { } at && w.BaseOf(at)?.Owner == World.Player;
 
         /// <summary>비행 중 교전에 나서는 기체: 출격했고, 파일럿이 타 있고, 격추되지 않은 기체.</summary>
         public static List<Aircraft> Flyers(World w, Squadron s) =>
@@ -31,7 +62,7 @@ namespace Prototype.Strategy.Rules
 
         /// <summary>이번 명령으로 갈 수 있는 거리 (거점에 있으면 이륙 후 속도·연료 기준).</summary>
         public static int Reach(World w, Balance bal, Squadron s) =>
-            IsFlying(s) ? Math.Min(s.MovesLeft, s.Fuel) : Math.Min(Speed(w, bal, s), MaxFuel(w, bal, s));
+            IsFlying(s) ? Math.Min(s.MovesLeft, TotalFuel(s)) : Math.Min(Speed(w, bal, s), MaxFuel(w, bal, s) + (s.DropTank ? TankCapacity(w, bal, s) : 0));
 
         /// <summary>가장 가까운 아군 거점 (착륙 후보)과 거리.</summary>
         public static (Base b, int distance) NearestLanding(World w, Squadron s)
@@ -61,7 +92,7 @@ namespace Prototype.Strategy.Rules
                 if (launch != null) return launch;
             }
             else if (s.MovesLeft <= 0) return "이번 턴 이동 끝";
-            else if (s.Fuel <= 0) return "연료 없음";
+            else if (TotalFuel(s) <= 0) return "연료 없음";
             if (!w.Map.Contains(dest)) return "맵 밖";
             var d = Hex.Distance(Position(w, s), dest);
             if (d == 0) return "현재 위치";
@@ -95,7 +126,7 @@ namespace Prototype.Strategy.Rules
             foreach (var step in Hex.Line(from, dest).Skip(1))
             {
                 s.AirHex = step;
-                s.Fuel--;
+                Burn(s, 1);
                 s.MovesLeft--;
                 trace.Path.Add(step);
                 trace.Seen.Add(true);
@@ -109,6 +140,7 @@ namespace Prototype.Strategy.Rules
             if (!IsAttackTarget(w, s, dest)) return null;
 
             s.AttackedThisTurn = true;
+            Jettison(w, s); // 공격 목표에 도착하면 드롭탱크를 버린다
             var rep = SortieRules.Resolve(w, bal, s, dest);
             rep.Order = w.Debriefs.Count + 1;
             w.Debriefs.Add(rep);
@@ -117,7 +149,7 @@ namespace Prototype.Strategy.Rules
             var downs = rep.Aircraft.Count(o => o.ShotDown);
             w.Log("출격", $"{s.Name} → {rep.TargetName} · {SortieRules.MissionName(rep.Mission)} · {(rep.OverEnemyTerritory ? "적 영역" : "아군·중립")}" +
                           $"{(rep.OverlapBonus ? " · 겹침 보정" : "")} · 파괴율 {rep.DestructionRate:0.00} · {rep.Rounds}R · 보상 {rep.Reward}" +
-                          (downs > 0 ? $" · 격추 {downs}" : "") + $" · 연료 {s.Fuel}");
+                          (downs > 0 ? $" · 격추 {downs}" : "") + $" · 연료 {TotalFuel(s)}");
             CheckGrounded(w, s);
             return rep;
         }
@@ -144,14 +176,16 @@ namespace Prototype.Strategy.Rules
             w.Funds -= cost;
             s.FlyingAircraftIds.Clear();
             s.FlyingAircraftIds.AddRange(SortieRules.SortieAircraft(w, bal, s).Select(a => a.Id));
-            s.Fuel = MaxFuel(w, bal, s); // 급유 반영 후 끈다
-            s.Refuel = false;
+            s.Fuel = MaxFuel(w, bal, s);
+            s.TankAttached = s.DropTank;
+            s.TankFuel = s.DropTank ? TankCapacity(w, bal, s) : 0;
+            s.RefueledTankerId = 0;
             s.AirHex = w.BaseById(s.BaseId).Hex;
             s.MovesLeft = Speed(w, bal, s);
             s.AttackedThisTurn = false;
             s.SortiedThisTurn = true;
             w.Stats.Sorties++;
-            w.Log("이륙", $"{s.Name} · {s.FlyingAircraftIds.Count}기 · 연료 {s.Fuel} · 속도 {s.MovesLeft} · 비용 {cost}");
+            w.Log("이륙", $"{s.Name} · {s.FlyingAircraftIds.Count}기 · 연료 {s.Fuel}{(s.TankAttached ? $" + 탱크 {s.TankFuel}" : "")} · 속도 {s.MovesLeft} · 비용 {cost}");
         }
 
         static void Land(World w, Squadron s, Base b)
@@ -168,6 +202,8 @@ namespace Prototype.Strategy.Rules
             s.AirHex = null;
             s.FlyingAircraftIds.Clear();
             s.Fuel = 0;
+            s.TankFuel = 0;
+            s.TankAttached = false;
             s.MovesLeft = 0;
         }
 
@@ -180,17 +216,20 @@ namespace Prototype.Strategy.Rules
             w.Log("비행종료", $"{s.Name} 날 수 있는 기체 없음");
         }
 
-        /// <summary>하늘에서 턴을 마침: 비행 피로, 연료 소모(예비 1), 바닥나면 불시착. 다음 턴 이동력 회복.</summary>
+        /// <summary>하늘에서 턴을 마침: 비행 피로, 연료 소모(아군 영역 위 초계면 없음), 모자라면 불시착. 다음 턴 이동력 회복.</summary>
         public static void EndTurnInAir(World w, Balance bal, Squadron s)
         {
             foreach (var a in Flyers(w, s))
                 if (w.PilotById(a.PilotId) is { } p)
                     p.Fatigue = Math.Min(100, p.Fatigue + bal.FlightFatigue);
-            s.Fuel -= bal.IdleFuelPerTurn;
-            if (s.Fuel < 0)
+            if (!OverOwnTerritory(w, s))
             {
-                Crash(w, bal, s);
-                return;
+                if (TotalFuel(s) < bal.IdleFuelPerTurn)
+                {
+                    Crash(w, bal, s);
+                    return;
+                }
+                Burn(s, bal.IdleFuelPerTurn);
             }
             s.MovesLeft = Speed(w, bal, s);
             s.AttackedThisTurn = false;

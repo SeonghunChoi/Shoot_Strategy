@@ -150,7 +150,6 @@ namespace Prototype.Strategy.Rules
             var b = w.BaseById(s.BaseId);
             var cost = SortieAircraft(w, bal, s).Sum(a => bal.SortieCostBySize[bal.Def(a.Type).Size]);
             if (BaseRules.Has(w, b, FacilityType.Depot)) cost = (int)(cost * (1f - bal.DepotSortieDiscount));
-            if (s.Refuel) cost += (int)(cost * bal.RefuelCostRatio);
             return cost;
         }
 
@@ -200,7 +199,6 @@ namespace Prototype.Strategy.Rules
                 // 앞 출격으로 목표가 사라졌으면 건너뜀
                 if (MissionAt(w, plan.Target) == null)
                 {
-                    s.Refuel = false;
                     w.Debriefs.Add(new SortieReport
                     {
                         Order = order++, SquadronName = s.Name, Mission = plan.Mission, Target = plan.Target,
@@ -400,7 +398,6 @@ namespace Prototype.Strategy.Rules
             if (!inFlight)
             {
                 s.SortiedThisTurn = true;
-                s.Refuel = false; // 급유는 출격 1회분
                 w.Stats.Sorties++;
             }
             return report;

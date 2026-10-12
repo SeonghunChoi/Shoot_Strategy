@@ -41,6 +41,8 @@ namespace Prototype.Strategy.Rules
             w.Funds += net;
             w.EnemyEvents.Clear();
             w.Traces.Clear();
+            // 급유를 마친 급유기는 적 턴 전에 떠난다
+            TankerRules.Depart(w);
             // 비행 중 편대가 있으면 적 선공 디브리핑을 새로 쌓는다
             if (w.Squadrons.Any(s => s.AirHex != null)) w.Debriefs.Clear();
             // 턴 순서: 아군 지상군 이동 → 적 턴 → 편대 회복. 이번 턴 출격한 편대는 요격 불가

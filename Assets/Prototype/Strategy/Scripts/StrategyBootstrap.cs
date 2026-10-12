@@ -26,6 +26,7 @@ namespace Prototype.Strategy
         static readonly Color MoveColor = new(0.4f, 1f, 0.5f, 0.4f);
         static readonly Color TargetColor = new(1f, 0.6f, 0.15f, 0.45f);
         static readonly Color OutpostColor = new(0.9f, 0.9f, 0.5f, 0.4f);
+        static readonly Color TankerCallColor = new(0.95f, 0.9f, 0.35f, 0.3f);
         static readonly Color GroundColor = new(0.45f, 0.9f, 0.35f, 0.45f);
 
         /// <summary>테스트 빌드 구분 (두 버전을 함께 배포해 비교).</summary>
@@ -51,6 +52,11 @@ namespace Prototype.Strategy
         /// <summary>전초기지 위치를 고르는 중.</summary>
         public bool OutpostMode { get; private set; }
         public IReadOnlyList<Hex> OutpostCandidates => _outpostCandidates;
+        /// <summary>급유기 호출 지점을 고르는 중.</summary>
+        public bool TankerMode { get; private set; }
+        public IReadOnlyList<Hex> TankerCandidates => _tankerCandidates;
+        /// <summary>레이더 미확인 접촉 (매 프레임 갱신).</summary>
+        public List<Vision.Contact> Contacts { get; private set; } = new();
         public bool ShowDebrief { get; set; }
         /// <summary>적 턴 요약 창.</summary>
         public bool ShowEnemyReport { get; set; }
@@ -75,6 +81,7 @@ namespace Prototype.Strategy
         StrategyHud _hud;
         readonly List<Hex> _targetCandidates = new();
         readonly List<Hex> _outpostCandidates = new();
+        readonly List<Hex> _tankerCandidates = new();
         readonly List<Hex> _highlight = new();
 
         const string TesterPrefKey = "StrategyProto.Tester";
@@ -145,7 +152,17 @@ namespace Prototype.Strategy
             GroundPick = null;
             EndTurnWarned = false;
             FuelWarned = false;
+            TankerMode = false;
         }
+
+        public void StartTankerCall()
+        {
+            ClearModes();
+            TankerMode = true;
+            Tab = PanelTab.Sortie;
+        }
+
+        public void StopTankerCall() => TankerMode = false;
 
         public void StartOutpost()
         {
@@ -275,6 +292,9 @@ namespace Prototype.Strategy
             _outpostCandidates.Clear();
             if (OutpostMode && World.GameOver == null)
                 _outpostCandidates.AddRange(BaseRules.OutpostCandidates(World, Balance));
+            _tankerCandidates.Clear();
+            if (TankerMode && World.GameOver == null)
+                _tankerCandidates.AddRange(TankerRules.CallCandidates(World, Balance));
             _targetCandidates.Clear();
             if (TargetPickSquadron != null && World.GameOver == null)
                 _targetCandidates.AddRange(FlightRules.Destinations(World, Balance, TargetPickSquadron));
@@ -295,7 +315,7 @@ namespace Prototype.Strategy
                 else if (ShowDebrief) ShowDebrief = false;
                 else if (_hud.HasPadFocus) _hud.PadFocusClear();
                 else if (ShowHq) ShowHq = false;
-                else if (MovingSquadron != null || TargetPickSquadron != null || OutpostMode || GroundPick != null) ClearModes();
+                else if (MovingSquadron != null || TargetPickSquadron != null || OutpostMode || GroundPick != null || TankerMode) ClearModes();
                 else Selected = null;
             }
 
@@ -307,6 +327,8 @@ namespace Prototype.Strategy
 
             Visible = Vision.VisibleHexes(World, Balance);
             _view.UpdateTerritory(World, Balance, Visible, Vision.StaleSightings(World, Balance), Playback);
+            Contacts = Vision.Contacts(World, Balance, Visible);
+            _view.UpdateIntel(World, Balance, Contacts, TankerMode ? TankerRules.ThreatHexes(World, Balance, Visible) : null);
             _view.UpdatePlayback(Playback, Balance);
             BuildHighlight(out var color);
             _view.UpdateMarkers(Cursor.Hover, Selected, _highlight, color);
@@ -330,6 +352,12 @@ namespace Prototype.Strategy
                 // 남의 자원 타일 (들어가면 점령)
                 foreach (var site in World.Sites)
                     if (site.Owner != World.Player && GroundRules.CanDeploy(World, Balance, GroundPick, site.Hex) == null) _highlight.Add(site.Hex);
+                return;
+            }
+            if (TankerMode)
+            {
+                color = TankerCallColor;
+                _highlight.AddRange(_tankerCandidates);
                 return;
             }
             if (OutpostMode)
@@ -381,6 +409,13 @@ namespace Prototype.Strategy
                 // 지상군 출동 모드: 갈 수 있는 칸을 누르면 출동(또는 목표 변경), 그 밖을 누르면 모드 종료
                 if (hover is { } h && GroundRules.CanDeploy(World, Balance, GroundPick, h) == null) GroundRules.Deploy(World, Balance, GroundPick, h);
                 GroundPick = null;
+                return;
+            }
+            if (TankerMode)
+            {
+                // 급유기 호출 모드: 후보 칸을 누르면 호출, 그 밖을 누르면 모드 종료
+                if (hover is { } th && _tankerCandidates.Contains(th)) TankerRules.Call(World, Balance, th);
+                TankerMode = false;
                 return;
             }
             if (OutpostMode)

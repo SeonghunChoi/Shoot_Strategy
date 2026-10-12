@@ -139,4 +139,109 @@ namespace Prototype.Strategy.Tests
             }
         }
     }
+
+    /// <summary>도시판 2단계: 드롭탱크, 아군 영역 위 초계, 급유기, 레이더 미확인 접촉.</summary>
+    public class FlightSupportTests
+    {
+        Balance _bal;
+        World _w;
+        Squadron _s1;
+        Hex _coast;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _bal = new Balance { VisionEnabled = false, DirectiveInterval = 1000 };
+            _w = World.Create(1, _bal);
+            _w.Funds = 100000;
+            _s1 = _w.Squadrons[0];
+            _coast = _w.BaseById(_s1.BaseId).Hex;
+            foreach (var u in _w.EnemyUnits) u.Hex = _w.Bases.First(b => b.Owner == u.Owner).Hex;
+        }
+
+        Hex East(int n)
+        {
+            var h = _coast;
+            for (var i = 0; i < n; i++) h = h.Neighbor(0);
+            return h;
+        }
+
+        [Test]
+        public void DropTank_UsedFirst_DroppedAtAttackTarget()
+        {
+            _s1.DropTank = true;
+            Assert.AreEqual(4, FlightRules.TankCapacity(_w, _bal, _s1)); // 7 × 1.5 = 10.5 → 11
+            FlightRules.Order(_w, _bal, _s1, East(2));
+            Assert.AreEqual(7, _s1.Fuel);      // 탱크부터 씀
+            Assert.AreEqual(2, _s1.TankFuel);
+            var a = _w.EnemyUnits[0];
+            a.Hex = East(3);
+            FlightRules.Order(_w, _bal, _s1, a.Hex);
+            Assert.IsFalse(_s1.TankAttached);
+            Assert.AreEqual(0, _s1.TankFuel);
+            Assert.AreEqual(7, _s1.Fuel);
+        }
+
+        [Test]
+        public void CombatAirPatrol_OverOwnTerritory_KeepsFuel()
+        {
+            FlightRules.Order(_w, _bal, _s1, East(1)); // 해안 기지 영역 안
+            Assert.IsTrue(FlightRules.OverOwnTerritory(_w, _s1));
+            var fuel = _s1.Fuel;
+            Economy.EndTurn(_w, _bal);
+            Assert.AreEqual(fuel, _s1.Fuel);
+        }
+
+        [Test]
+        public void Tanker_ArrivesNextTurn_Refuels_ThenLeaves()
+        {
+            Assert.AreEqual(1, TankerRules.Capacity(_w, _bal)); // 해안 기지 활주로 2등급
+            var funds = _w.Funds;
+            var t = TankerRules.Call(_w, _bal, East(4));
+            Assert.IsNotNull(t);
+            Assert.AreEqual(funds - _bal.TankerCost, _w.Funds);
+            StringAssert.Contains("모두 사용 중", TankerRules.CanCall(_w, _bal));
+
+            FlightRules.Order(_w, _bal, _s1, East(3));
+            Assert.IsNull(TankerRules.RefuelableFor(_w, _bal, _s1)); // 아직 도착 전
+            Economy.EndTurn(_w, _bal);
+            Assert.AreEqual(1, _w.Tankers.Count);
+            Assert.IsTrue(TankerRules.IsActive(_w, t));
+            Assert.Less(_s1.Fuel, FlightRules.MaxFuel(_w, _bal, _s1));
+            Assert.IsTrue(TankerRules.Refuel(_w, _bal, _s1));
+            Assert.AreEqual(FlightRules.MaxFuel(_w, _bal, _s1), _s1.Fuel);
+            Assert.IsFalse(TankerRules.Refuel(_w, _bal, _s1)); // 급유기마다 1회
+
+            Economy.EndTurn(_w, _bal);
+            Assert.IsEmpty(_w.Tankers);
+        }
+
+        [Test]
+        public void Tanker_ShotDown_ByAdjacentEnemy()
+        {
+            var t = TankerRules.Call(_w, _bal, East(4));
+            var a = _w.EnemyUnits[0];
+            a.Hex = East(5);
+            Economy.EndTurn(_w, _bal);
+            Assert.IsEmpty(_w.Tankers);
+            Assert.IsTrue(_w.Traces.Any(x => x.Kind == TraceKind.Event && x.Event == "급유기 격추"));
+        }
+
+        [Test]
+        public void RadarContact_ShowsUnknownBlip_ExactWithRadar()
+        {
+            _bal.VisionEnabled = true;
+            var a = _w.EnemyUnits[0];
+            a.Hex = East(4);
+            var visible = Vision.VisibleHexes(_w, _bal);
+            Assert.IsFalse(visible.Contains(a.Hex));
+            var near = Vision.Contacts(_w, _bal, visible).Where(c => Hex.Distance(c.Hex, a.Hex) <= 1).ToList();
+            Assert.AreEqual(1, near.Count, "레이더 없으면 1칸 오차 안의 '?'");
+
+            BaseRules.Build(_w, _bal, _w.Bases[0], FacilityType.Radar);
+            visible = Vision.VisibleHexes(_w, _bal);
+            Assert.IsFalse(visible.Contains(a.Hex));
+            Assert.IsTrue(Vision.Contacts(_w, _bal, visible).Any(c => c.Hex == a.Hex), "레이더가 있으면 정확한 위치");
+        }
+    }
 }

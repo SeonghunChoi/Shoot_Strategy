@@ -32,6 +32,7 @@ namespace Prototype.Strategy
         readonly HexMesh _markers;
         readonly HexMesh _prediction;
         readonly HexMesh _playback;
+        readonly HexMesh _intel;
 
         public HexMapView(HexMap map, Transform parent)
         {
@@ -42,6 +43,7 @@ namespace Prototype.Strategy
             _markers = new HexMesh("Markers", parent, -0.2f, 3);
             _prediction = new HexMesh("Prediction", parent, -0.15f, 2);
             _playback = new HexMesh("Playback", parent, -0.18f, 3);
+            _intel = new HexMesh("Intel", parent, -0.12f, 2);
             BuildTerrain();
         }
 
@@ -172,6 +174,39 @@ namespace Prototype.Strategy
         }
 
         static readonly Color SquadronFill = new(0.06f, 0.16f, 0.32f, 0.95f);
+        public static readonly Color ContactColor = new(1f, 0.7f, 0.3f);
+        public static readonly Color TankerColor = new(0.95f, 0.9f, 0.35f);
+
+        /// <summary>
+        /// 정보 층: 대공 위협 범위(급유기 호출 모드, 붉은 칸), 레이더 미확인 접촉("?" 표식 + 지난 위치에서 온 방향),
+        /// 급유기(도착 대기는 테두리만, 급유 가능은 채움 + 급유 범위).
+        /// </summary>
+        public void UpdateIntel(World world, Balance bal, IReadOnlyList<Vision.Contact> contacts, HashSet<Hex> threat)
+        {
+            _intel.Clear();
+            if (threat != null)
+                foreach (var h in threat) _intel.AddFilled(h, CellScale, new Color(1f, 0.15f, 0.1f, 0.22f));
+            foreach (var c in contacts)
+            {
+                var to = HexLayout.ToWorld(c.Hex);
+                if (c.From is { } from && from != c.Hex)
+                    _intel.AddSegment(HexLayout.ToWorld(from), to, 0.07f, new Color(ContactColor.r, ContactColor.g, ContactColor.b, 0.6f));
+                _intel.AddFilled(c.Hex, 0.42f, new Color(0.25f, 0.15f, 0.05f, 0.9f));
+                _intel.AddOutline(c.Hex, 0.48f, 0.38f, ContactColor);
+            }
+            foreach (var t in world.Tankers)
+            {
+                var active = TankerRules.IsActive(world, t);
+                if (active)
+                {
+                    foreach (var h in Hex.Range(t.Hex, bal.TankerRefuelRange))
+                        if (_map.Contains(h)) _intel.AddFilled(h, CellScale, new Color(TankerColor.r, TankerColor.g, TankerColor.b, 0.15f));
+                    _intel.AddFilled(t.Hex, 0.4f, new Color(TankerColor.r * 0.4f, TankerColor.g * 0.4f, 0.05f, 0.95f));
+                }
+                _intel.AddOutline(t.Hex, 0.5f, 0.4f, new Color(TankerColor.r, TankerColor.g, TankerColor.b, active ? 1f : 0.6f));
+            }
+            _intel.Apply();
+        }
 
         static void DrawSquadronToken(HexMesh mesh, Vector2 pos)
         {

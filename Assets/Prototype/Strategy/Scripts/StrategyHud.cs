@@ -267,9 +267,16 @@ namespace Prototype.Strategy
                 if (s.AirHex is { } ah && !_boot.Playback.Hides(TraceKind.Squadron, s.Id))
                 {
                     var (_, d) = FlightRules.NearestLanding(w, s);
-                    MapLabel(HexLayout.ToWorld(ah) + new Vector2(0f, -0.62f), $"{s.Name} 연료 {s.Fuel}", _mapLabelSmall,
-                        s.Fuel <= d + _boot.Balance.IdleFuelPerTurn ? new Color(1f, 0.5f, 0.45f) : new Color(0.6f, 0.85f, 1f));
+                    var low = !FlightRules.OverOwnTerritory(w, s) && FlightRules.TotalFuel(s) <= d + _boot.Balance.IdleFuelPerTurn;
+                    MapLabel(HexLayout.ToWorld(ah) + new Vector2(0f, -0.62f), $"{s.Name} 연료 {s.Fuel}{(s.TankAttached ? $"+{s.TankFuel}" : "")}", _mapLabelSmall,
+                        low ? new Color(1f, 0.5f, 0.45f) : new Color(0.6f, 0.85f, 1f));
                 }
+
+            // 레이더 미확인 접촉과 급유기
+            foreach (var c in _boot.Contacts)
+                MapLabel(HexLayout.ToWorld(c.Hex), "?", _mapLabel, HexMapView.ContactColor);
+            foreach (var t in w.Tankers)
+                MapLabel(HexLayout.ToWorld(t.Hex) + new Vector2(0f, -0.62f), TankerRules.IsActive(w, t) ? "급유기 (급유 가능)" : "급유기 (도착 대기)", _mapLabelSmall, HexMapView.TankerColor);
 
             // 이동 재생 표식의 이름과 교전 글자
             if (_boot.Playback.Playing)
@@ -491,15 +498,15 @@ namespace Prototype.Strategy
             var bal = _boot.Balance;
             if (_boot.OutpostMode)
             {
-                GUILayout.Label($"전초기지 모드: 노란 칸을 클릭 / 패드 South. 아군 거점에서 {bal.OutpostMinDistance}칸 이상, 편대가 (급유 포함) 닿는 곳. 비용 {bal.OutpostCost} + 거리 × {bal.OutpostCostPerDistance}", _wrap);
+                GUILayout.Label($"전초기지 모드: 노란 칸을 클릭 / 패드 South. 아군 거점에서 {bal.OutpostMinDistance}칸 이상, 편대가 (드롭탱크 포함) 왕복할 수 있는 곳. 비용 {bal.OutpostCost} + 거리 × {bal.OutpostCostPerDistance}", _wrap);
                 // 거점별 도달 범위: 편대가 없는 거점은 후보가 없다는 것을 바로 알 수 있게
                 foreach (var ob in w.Bases.Where(x => x.Owner == World.Player))
                 {
                     var squadrons = w.SquadronsAt(ob).ToList();
-                    var reach = squadrons.Count == 0 ? 0 : squadrons.Max(sq => SquadronRules.OperationRadius(w, bal, sq, refuel: true));
+                    var reach = squadrons.Count == 0 ? 0 : squadrons.Max(sq => SquadronRules.ReachWithDropTank(w, bal, sq));
                     GUILayout.Label(squadrons.Count == 0
                         ? $"  {ob.Name}: 편대 없음 → 후보 없음 (편대를 옮기면 열림)"
-                        : $"  {ob.Name}: 편대 {squadrons.Count} · 급유 포함 최대 도달 {reach}", squadrons.Count == 0 ? _red : ProtoGui.Small);
+                        : $"  {ob.Name}: 편대 {squadrons.Count} · 드롭탱크 포함 왕복 {reach}", squadrons.Count == 0 ? _red : ProtoGui.Small);
                 }
                 PanelButton("전초기지 모드 끝내기", _boot.StopOutpost);
             }
@@ -573,7 +580,7 @@ namespace Prototype.Strategy
             var repair = maint > 0 ? maint * bal.RepairPerMaintenanceGrade : bal.RepairWithoutMaintenance;
             var rest = bal.FatigueRecovery + SquadronRules.EntertainmentGrade(w, b) * bal.FatigueRecoveryPerEntertainmentGrade;
             GUILayout.Label($"이 거점에서 턴마다 수리 {repair}%{(maint == 0 ? " (정비소 없음)" : "")} · 피로 −{rest}", ProtoGui.Small);
-            GUILayout.Label($"작전 반경 {SquadronRules.OperationRadius(w, bal, s, refuel: false)} (가장 짧은 기체 기준 + 설비)  ·  공중급유 시 {SquadronRules.OperationRadius(w, bal, s, refuel: true)}", ProtoGui.Small);
+            GUILayout.Label($"작전 반경 {SquadronRules.OperationRadius(w, bal, s)} (가장 짧은 기체 기준 + 설비)  ·  연료 {FlightRules.MaxFuel(w, bal, s)} (드롭탱크 +{FlightRules.TankCapacity(w, bal, s)})", ProtoGui.Small);
             if (s.AirHex is { } airAt) GUILayout.Label($"비행 중 ({airAt.ToOffset()}) · 연료 {s.Fuel} — 편성 변경 불가, 기지 요격 불참", _green);
             else if (s.LandedThisTurn) GUILayout.Label("이번 턴 착륙 — 출격 불가 (기지 요격은 가능)", _red);
             // 비행 중에는 편성 버튼을 막는다
@@ -664,6 +671,25 @@ namespace Prototype.Strategy
             if (_boot.FuelWarned)
                 GUILayout.Label("연료가 바닥난 편대가 있습니다 — 이대로 턴을 마치면 불시착(기체 손실). 턴 종료를 다시 누르면 그대로 진행합니다.", _red);
 
+            // 공중 급유기
+            if (_boot.TankerMode)
+            {
+                GUILayout.Label("급유기 호출: 노란 칸을 클릭 / 패드 South", ProtoGui.Bold);
+                GUILayout.Label("붉은 칸 = 보이는 적이 다음 적 턴에 닿아 쏠 수 있는 범위. 적이 탐지(부대·거점에서 3칸)하면 다가와 격추합니다. 오른쪽 클릭·Esc·East로 취소", _wrap);
+                PanelButton("호출 취소", _boot.StopTankerCall);
+            }
+            else
+            {
+                var tankerReason = TankerRules.CanCall(w, bal);
+                PanelButton($"급유기 호출…  ({bal.TankerCost}, 동시 {w.Tankers.Count}/{TankerRules.Capacity(w, bal)}대)", _boot.StartTankerCall, enabled: tankerReason == null);
+                if (tankerReason != null && w.Tankers.Count == 0) GUILayout.Label(tankerReason, _red);
+            }
+            foreach (var t in w.Tankers)
+                GUILayout.Label(TankerRules.IsActive(w, t)
+                    ? $"급유기 {t.Hex.ToOffset()} — 급유 가능 (주변 {bal.TankerRefuelRange}칸, 이번 턴 끝에 떠남)"
+                    : $"급유기 {t.Hex.ToOffset()} — 도착 대기 (이번 적 턴에 도착, 다음 턴 급유)", TankerRules.IsActive(w, t) ? _green : ProtoGui.Small);
+            GUILayout.Space(6);
+
             var gaps = w.Bases.Where(x => x.Owner == World.Player && w.SquadronsAt(x).Any() && w.SquadronsAt(x).All(FlightRules.IsFlying)).ToList();
             if (gaps.Count > 0) GUILayout.Label($"방어 공백: {string.Join(", ", gaps.Select(x => x.Name))} — 편대가 모두 비행 중 (적이 와도 요격 없음)", _red);
 
@@ -676,33 +702,35 @@ namespace Prototype.Strategy
                 if (FlightRules.IsFlying(s))
                 {
                     var (landing, d) = FlightRules.NearestLanding(w, s);
-                    var low = s.Fuel <= d + bal.IdleFuelPerTurn;
+                    var overOwn = FlightRules.OverOwnTerritory(w, s);
+                    var low = !overOwn && FlightRules.TotalFuel(s) <= d + bal.IdleFuelPerTurn;
                     GUILayout.Label($"■ {s.Name}  ·  비행 중 {s.AirHex.Value.ToOffset()}", ProtoGui.Bold);
-                    GUILayout.Label($"{FlightRules.Flyers(w, s).Count}기 · 연료 {s.Fuel} · 이동 {s.MovesLeft}/{FlightRules.Speed(w, bal, s)}{(s.AttackedThisTurn ? " · 이번 턴 교전함" : "")}", ProtoGui.Small);
+                    GUILayout.Label($"{FlightRules.Flyers(w, s).Count}기 · 연료 {s.Fuel}{(s.TankAttached ? $" + 탱크 {s.TankFuel}" : "")} · 이동 {s.MovesLeft}/{FlightRules.Speed(w, bal, s)}{(s.AttackedThisTurn ? " · 이번 턴 교전함" : "")}{(overOwn ? " · 아군 영역 위 (초계: 턴 종료 연료 소모 없음)" : "")}", _wrap);
                     GUILayout.Label(landing == null ? "착륙할 아군 거점 없음" : $"가장 가까운 착륙: {landing.Name} 거리 {d}", low ? _red : ProtoGui.Small);
-                    if (low) GUILayout.Label($"연료 경고 — 하늘에서 턴을 마칠 때마다 연료 −{bal.IdleFuelPerTurn}, 0 아래면 불시착", _red);
+                    if (low) GUILayout.Label($"연료 경고 — 아군 영역 밖에서 턴을 마칠 때마다 연료 −{bal.IdleFuelPerTurn}, 모자라면 불시착", _red);
                     var ret = FlightRules.ReturnStep(w, bal, s);
                     GUILayout.BeginHorizontal();
                     PanelButton($"{s.Name} 이동·공격…", () => _boot.StartTargetPick(sq), enabled: FlightRules.Reach(w, bal, s) > 0);
                     PanelButton(landing != null && ret == landing.Hex ? $"귀환 ({landing.Name} 착륙)" : "귀환 쪽으로 이동",
                         () => { if (FlightRules.ReturnStep(w, bal, sq) is { } r) _boot.OrderFlight(sq, r); }, enabled: ret != null);
                     GUILayout.EndHorizontal();
+                    if (TankerRules.RefuelableFor(w, bal, s) != null)
+                        PanelButton($"{s.Name} 급유 (연료 가득{(s.TankAttached ? ", 탱크 포함" : "")})", () => TankerRules.Refuel(w, bal, sq));
                 }
                 else
                 {
                     var reason = FlightRules.CanLaunch(w, bal, s);
                     var dest = reason == null ? FlightRules.Destinations(w, bal, s).ToList() : new List<Hex>();
                     var targets = dest.Count(h => FlightRules.IsAttackTarget(w, s, h));
-                    GUILayout.Label($"■ {s.Name}  ·  {b.Name}{(s.Refuel ? "  ·  급유 켜짐" : "")}", ProtoGui.Bold);
-                    GUILayout.Label($"출격 {SortieRules.SortieAircraft(w, bal, s).Count()}/{s.AircraftIds.Count}기 · 비용 {SortieRules.Cost(w, bal, s)} · 속도 {FlightRules.Speed(w, bal, s)} · 연료 {FlightRules.MaxFuel(w, bal, s)}" +
+                    GUILayout.Label($"■ {s.Name}  ·  {b.Name}{(s.DropTank ? "  ·  드롭탱크" : "")}", ProtoGui.Bold);
+                    GUILayout.Label($"출격 {SortieRules.SortieAircraft(w, bal, s).Count()}/{s.AircraftIds.Count}기 · 비용 {SortieRules.Cost(w, bal, s)} · 속도 {FlightRules.Speed(w, bal, s)} · 연료 {FlightRules.MaxFuel(w, bal, s)}{(s.DropTank ? $" + 탱크 {FlightRules.TankCapacity(w, bal, s)}" : "")}" +
                                     (targets > 0 ? $" · 이번 턴 공격 가능 {targets}곳" : ""), ProtoGui.Small);
                     GUILayout.BeginHorizontal();
                     PanelButton($"{s.Name} 출격…", () => _boot.StartTargetPick(sq), enabled: reason == null && dest.Count > 0);
-                    if (reason == null)
-                        PanelButton(s.Refuel
-                                ? $"급유 끄기 (연료 {SquadronRules.OperationRadius(w, bal, s, refuel: false) * 2 + bal.ReserveFuel})"
-                                : $"급유 켜기 (연료 {SquadronRules.OperationRadius(w, bal, s, refuel: true) * 2 + bal.ReserveFuel}, +{bal.RefuelCostRatio:P0})",
-                            () => sq.Refuel = !sq.Refuel);
+                    PanelButton(s.DropTank
+                            ? "드롭탱크 떼기"
+                            : $"드롭탱크 달기 (연료 {FlightRules.MaxFuel(w, bal, s)} → {FlightRules.MaxFuel(w, bal, s) + FlightRules.TankCapacity(w, bal, s)})",
+                        () => sq.DropTank = !sq.DropTank);
                     GUILayout.EndHorizontal();
                     if (reason != null) GUILayout.Label(reason, _red);
                 }
@@ -713,7 +741,7 @@ namespace Prototype.Strategy
             if (w.EnemyEvents.Count > 0 || w.Intercepts.Count > 0) PanelButton("최근 적 턴 요약 다시 보기", () => _boot.ShowEnemyReport = true);
             PanelButton(bal.VisionEnabled ? "디버그: 시야 끄기 (적 전부 표시)" : "디버그: 시야 켜기", () => bal.VisionEnabled = !bal.VisionEnabled);
             GUILayout.Label($"출격 비용(이륙 때 한 번) 소형 30 · 중형 50 · 대형 80, 보급창고 −20%. 연료 = 반경 × 2 + 예비 {bal.ReserveFuel}, 한 칸 1, 하늘에서 턴을 마칠 때 {bal.IdleFuelPerTurn}. " +
-                            $"공중급유 = 반경 × {bal.RefuelRadiusMultiplier:0.#}, 비용 +{bal.RefuelCostRatio:P0}. 편대는 턴당 교전 1회, 비행 중에는 기지 요격 불참, 맞닿은 적은 먼저 교전을 겁니다. 착륙한 턴은 출격 불가", _wrap);
+                            $"아군 영역 위에서는 턴을 마쳐도 연료를 쓰지 않음(초계). 드롭탱크 = 연료 × {1f + bal.DropTankRatio:0.#}, 탱크부터 쓰고 교전·공격 목표 도착 시 버림. 급유기 = 호출 다음 턴 주변 {bal.TankerRefuelRange}칸 급유. 편대는 턴당 교전 1회, 비행 중에는 기지 요격 불참, 맞닿은 적은 먼저 교전을 겁니다. 착륙한 턴은 출격 불가", _wrap);
         }
 
         Vector2 _debriefScroll;
@@ -1049,6 +1077,9 @@ namespace Prototype.Strategy
             "튜닝 메뉴: F2 (수치 슬라이더·테스터 이름·튜닝 값 내보내기·로그 폴더)",
             "출격 탭: [출격…] → 갈 칸 클릭. 편대는 맵 위에서 턴마다 속도만큼 날고 연료가 떨어지기 전에 아군 거점에 착륙",
             "비행 중 편대 칸을 클릭하면 그 편대 선택. 맞닿은 적은 적 턴에 먼저 교전을 겁니다",
+            "아군 영역 위에서 턴을 마치면 연료 소모 없음 (초계). 드롭탱크: 연료 1.5배, 교전·공격 목표 도착 시 버림",
+            "급유기 호출(출격 탭): 다음 턴 그 지점 주변 1칸에서 급유. 적이 탐지하면 다가와 격추. 붉은 칸 = 대공 위협",
+            "'?' = 레이더 미확인 접촉 (정체·전력·수 모름, 선은 지난 위치에서 온 방향). 레이더 없으면 위치 ±1칸",
             "비행·턴 종료 후 이동을 맵에서 재생: 클릭 · Space · South로 건너뛰기",
             "디버그: 출격 탭 맨 아래 '시야 끄기', 격납고 탭 '손상 50·피로 80'",
         };

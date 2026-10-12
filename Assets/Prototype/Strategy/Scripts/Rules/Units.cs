@@ -85,6 +85,8 @@ namespace Prototype.Strategy.Rules
         public Hex? Goal;
         /// <summary>이번 적 턴에 지상군과 교전함 (중복 교전 방지).</summary>
         public bool EngagedThisTurn;
+        /// <summary>지난 적 턴을 시작할 때의 위치 (미확인 접촉의 이동 방향 표시).</summary>
+        public Hex? PrevHex;
         public int Strength => Air + Ground;
     }
 
@@ -99,8 +101,14 @@ namespace Prototype.Strategy.Rules
         public readonly List<int> AircraftIds = new();
         /// <summary>이번 턴 출격 여부 (피로 회복 판정, 4단계부터 설정).</summary>
         public bool SortiedThisTurn;
-        /// <summary>이번 출격에 공중급유 (비용 추가, 작전 반경 배율). 출격 후 꺼진다.</summary>
-        public bool Refuel;
+        /// <summary>드롭탱크 장착 설정 (출격할 때마다 적용, 편대에 남는다).</summary>
+        public bool DropTank;
+        /// <summary>비행 중 드롭탱크를 달고 있음 (교전·공격 목표 도착 시 버린다).</summary>
+        public bool TankAttached;
+        /// <summary>드롭탱크에 남은 연료 (먼저 쓴다).</summary>
+        public int TankFuel;
+        /// <summary>마지막으로 급유받은 급유기 (급유기마다 편대당 1회).</summary>
+        public int RefueledTankerId;
         /// <summary>비행 중 위치 (null이면 소속 거점에 있음). C안: 출격한 편대는 맵 위 부대가 되어 턴마다 속도만큼 날고, 아군 거점에 내려야 끝난다.</summary>
         public Hex? AirHex;
         /// <summary>남은 연료 (칸).</summary>
