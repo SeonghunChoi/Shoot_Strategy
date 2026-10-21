@@ -68,6 +68,24 @@ namespace Prototype.Strategy.Tests
         }
 
         [Test]
+        public void AttackThenLand_NextLaunchCanAttackAgain()
+        {
+            var a = _w.EnemyUnits[0];
+            a.Hex = East(1);
+            Assert.IsNotNull(FlightRules.Order(_w, _bal, _s1, a.Hex));
+            if (FlightRules.IsFlying(_s1)) FlightRules.Order(_w, _bal, _s1, _coast); // 공격 후 같은 턴에 착륙
+            Assert.IsFalse(FlightRules.IsFlying(_s1));
+            Assert.IsFalse(_s1.AttackedThisTurn);
+
+            Economy.EndTurn(_w, _bal);
+            foreach (var u in _w.EnemyUnits) u.Hex = _w.Bases.First(b => b.Owner == u.Owner).Hex;
+            var next = _w.EnemyUnits[0]; // 처음 친 부대는 격파됐을 수 있음
+            next.Hex = East(2);
+            Assert.IsTrue(FlightRules.IsAttackTarget(_w, _s1, next.Hex));
+            CollectionAssert.Contains(FlightRules.Destinations(_w, _bal, _s1).ToList(), next.Hex);
+        }
+
+        [Test]
         public void EndTurnInAir_FuelFatigueAndMovesReset_ThenLand()
         {
             FlightRules.Order(_w, _bal, _s1, East(2));

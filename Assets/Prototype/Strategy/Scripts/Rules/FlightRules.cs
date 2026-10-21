@@ -205,6 +205,7 @@ namespace Prototype.Strategy.Rules
             s.TankFuel = 0;
             s.TankAttached = false;
             s.MovesLeft = 0;
+            s.AttackedThisTurn = false; // 공격 후 착륙해도 다음 출격의 공격 목표에서 빠지지 않게
         }
 
         /// <summary>날 수 있는 기체가 하나도 없으면 비행 종료 (잔해는 회수된 것으로 보고 소속 거점에).</summary>
